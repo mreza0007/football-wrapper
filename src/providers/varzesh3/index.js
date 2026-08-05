@@ -1,6 +1,8 @@
 'use strict';
 
 const competitionMap = require('./competitionMap');
+const seasonData = require('./seasonData');
+const normalizers = require('./normalizers');
 
 function normalizeKey(value) {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
@@ -20,5 +22,7 @@ function getSeasonMapping(competitionKey, seasonKey) {
 module.exports = {
   providerKey: 'varzesh3',
   getCompetitionMapping,
-  getSeasonMapping
+  getSeasonMapping,
+  ...seasonData,
+  ...normalizers
 };

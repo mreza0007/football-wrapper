@@ -1,6 +1,6 @@
 # Generic Football Wrapper
 
-A standalone, provider-independent HTTP API foundation for exposing football data across multiple competitions and seasons. This phase provides registry and adapter boundaries only; it does not fetch football data.
+A standalone, provider-independent HTTP API for exposing football data across multiple competitions and seasons. It currently provides read-only Premier League season matches and standings through a Varzesh3 adapter.
 
 ## Architecture boundary
 
@@ -24,6 +24,7 @@ Copy `.env.example` to `.env` if you need local environment overrides.
 npm start
 npm run dev
 npm test
+npm run probe:varzesh3
 ```
 
 The server listens on `PORT`, falling back to `3060`.
@@ -35,12 +36,27 @@ The server listens on `PORT`, falling back to `3060`.
 - `GET /competitions/:competitionKey`
 - `GET /competitions/:competitionKey/seasons`
 - `GET /competitions/:competitionKey/seasons/:seasonKey`
+- `GET /competitions/:competitionKey/seasons/:seasonKey/matches`
+- `GET /competitions/:competitionKey/seasons/:seasonKey/standings`
 
 All responses are JSON. Unknown resources and routes return JSON `404` errors.
+
+The matches endpoint accepts `?status=all`, `upcoming`, `live`, or `finished`; the default is `all`.
+
+## Provider configuration
+
+- `VARZESH3_BASE_URL` defaults to `https://web-api.varzesh3.com/v2.0`.
+- `VARZESH3_TIMEOUT_MS` defaults to `30000` milliseconds.
+
+Match pagination follows only provider `next` and `prev` links on the configured origin and expected league/season path. It does not assume page sizes or skip increments and stops after at most 50 fetched pages.
+
+`kickoff_utc` remains `null` when the season feed does not provide a genuinely valid UTC timestamp. The original Persian date and Iran time are preserved, and the match includes a `kickoff_utc_unresolved` warning.
+
+`npm run probe:varzesh3` is the manual online provider check. It prints counts and one normalized sample of each resource, never the full provider payload. The regular test suite mocks `fetch` and stays offline.
 
 ## Current limitations
 
 - Only the Premier League and its 2026-2027 season are configured.
-- There are no external provider HTTP requests.
-- Match, team, standings, live, and event fetching are not implemented.
+- Match and standings data are read directly from the configured provider without persistence.
+- Dedicated live-score enrichment and event fetching are not implemented.
 - There is no database, frontend, or authentication.
