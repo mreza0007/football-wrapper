@@ -41,6 +41,11 @@ test('raw match statuses and isLive are normalized', () => {
   }
   assert.equal(normalizeStatus({ status: 7 }), 'finished');
   assert.equal(normalizeStatus({ status: 99, isLive: true }), 'live');
+  assert.equal(normalizeStatus({ status: 99, statusTitle: 'وقت اضافه' }), 'live');
+  assert.equal(
+    normalizeStatus({ status: 99, statusTitle: 'ضربات پنالتی' }),
+    'live'
+  );
   assert.equal(normalizeStatus({ status: 99, statusTitle: 'پایان بازی' }), 'finished');
   assert.equal(normalizeStatus({ status: 99 }), null);
 });

@@ -3,6 +3,7 @@
 const competitionMap = require('./competitionMap');
 const seasonData = require('./seasonData');
 const normalizers = require('./normalizers');
+const liveData = require('./liveData');
 
 function normalizeKey(value) {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
@@ -23,6 +24,7 @@ module.exports = {
   providerKey: 'varzesh3',
   getCompetitionMapping,
   getSeasonMapping,
+  ...liveData,
   ...seasonData,
   ...normalizers
 };

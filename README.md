@@ -39,6 +39,7 @@ The server listens on `PORT`, falling back to `3060`.
 - `GET /competitions/:competitionKey/seasons/:seasonKey/matches`
 - `GET /competitions/:competitionKey/seasons/:seasonKey/standings`
 - `GET /competitions/:competitionKey/seasons/:seasonKey/teams`
+- `GET /matches/:matchId/live`
 
 All responses are JSON. Unknown resources and routes return JSON `404` errors.
 
@@ -46,10 +47,14 @@ The matches endpoint accepts `?status=all`, `upcoming`, `live`, or `finished`; t
 
 The teams endpoint uses non-empty standings as the authoritative season roster and fills missing standings names or logos from season matches. If standings are empty or unavailable, it derives and deduplicates teams from matches and returns a fallback warning. Team IDs use the same stable wrapper identity as match and standings records. A provider team ID of zero is never canonical; unresolved identities remain `null` and include a `team_identity_unresolved` warning.
 
+The live endpoint resolves the opaque stable match ID through an in-memory season index and enriches the normalized season snapshot from Varzesh3's today livescore feed. If the match is absent from today's feed, it returns the season snapshot with a warning. If the live provider is unavailable after the match is resolved, it returns a stale season snapshot with a safe warning instead of exposing provider details.
+
 ## Provider configuration
 
 - `VARZESH3_BASE_URL` defaults to `https://web-api.varzesh3.com/v2.0`.
 - `VARZESH3_TIMEOUT_MS` defaults to `30000` milliseconds.
+- `VARZESH3_LIVESCORE_CACHE_TTL_MS` defaults to `10000` milliseconds.
+- `MATCH_INDEX_TTL_MS` defaults to `300000` milliseconds.
 
 Match pagination follows only provider `next` and `prev` links on the configured origin and expected league/season path. It does not assume page sizes or skip increments and stops after at most 50 fetched pages.
 
@@ -57,9 +62,11 @@ Match pagination follows only provider `next` and `prev` links on the configured
 
 `npm run probe:varzesh3` is the manual online provider check. It prints counts and one normalized sample of each resource, never the full provider payload. The regular test suite mocks `fetch` and stays offline.
 
+The match index and today-livescore cache are process-local and are rebuilt after restarts. They coordinate concurrent refreshes but are not shared across multiple server processes.
+
 ## Current limitations
 
 - Only the Premier League and its 2026-2027 season are configured.
 - Match, standings, and team data are read directly from the configured provider without persistence.
-- Dedicated live-score enrichment and event fetching are not implemented.
+- Live enrichment is limited to today's feed; historical/future offsets and match events are not implemented.
 - There is no database, frontend, or authentication.

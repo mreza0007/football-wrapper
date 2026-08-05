@@ -5,6 +5,7 @@ const { ProviderRequestError } = require('../providers/varzesh3/httpClient');
 const {
   StandingsUnavailableError
 } = require('../providers/varzesh3/seasonData');
+const matchLocatorService = require('./matchLocatorService');
 
 class PublicApiError extends Error {
   constructor(status, publicMessage) {
@@ -58,6 +59,7 @@ async function getMatches(competitionKey, seasonKey, status = 'all') {
       { competitionKey, seasonKey },
       standing
     );
+    matchLocatorService.indexMatches(normalized.matches);
     const warnings = [];
 
     if (normalized.skippedUnknownStatus > 0) {

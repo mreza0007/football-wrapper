@@ -94,11 +94,15 @@ function normalizeStatus(match) {
   }
 
   const title = String(match?.statusTitle || '').trim().toLowerCase();
-  if (/live|زنده|در حال|نیمه/.test(title)) {
-    return 'live';
-  }
-  if (/finished|full.?time|پایان|تمام/.test(title)) {
+  if (
+    /finished|full.?time|پایان بازی|پایان مسابقه|اتمام بازی|پایان ضربات پنالتی/.test(
+      title
+    )
+  ) {
     return 'finished';
+  }
+  if (/live|زنده|در حال|نیمه|وقت اضافه|پنالتی|\bbreak\b|وقفه/.test(title)) {
+    return 'live';
   }
 
   return null;
@@ -394,6 +398,155 @@ function normalizeTeams(standing, matchEntries, context) {
   return { teams, unresolvedTeamIdentities };
 }
 
+function nonEmptyProviderValue(value) {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed || null;
+  }
+  return value === null || value === undefined ? null : value;
+}
+
+function normalizeMinute(value) {
+  const rawMinute = nonEmptyProviderValue(value);
+  if (rawMinute === null) {
+    return { minute: null, rawMinute: null };
+  }
+  if (Number.isInteger(rawMinute) && rawMinute >= 0) {
+    return { minute: rawMinute, rawMinute };
+  }
+  if (typeof rawMinute === 'string') {
+    const match = rawMinute.match(/^(\d+)(?:\+\d+)?(?:['’])?$/);
+    if (match) {
+      return { minute: Number.parseInt(match[1], 10), rawMinute };
+    }
+  }
+  return { minute: null, rawMinute };
+}
+
+function normalizeLivePhase(statusTitle, liveTime) {
+  const explicit = `${statusTitle || ''} ${liveTime || ''}`
+    .trim()
+    .toLowerCase();
+  if (!explicit) {
+    return null;
+  }
+
+  if (/penalt|پنالتی/.test(explicit)) {
+    return 'penalties';
+  }
+  if (
+    /extra.?time.?half.?time|extra.?time.?break|استراحت وقت اضافه|پایان نیمه اول وقت اضافه/.test(
+      explicit
+    )
+  ) {
+    return 'extra_time_halftime';
+  }
+  if (/first half extra time|1st half extra time|نیمه اول وقت اضافه/.test(explicit)) {
+    return 'extra_time_first_half';
+  }
+  if (/second half extra time|2nd half extra time|نیمه دوم وقت اضافه/.test(explicit)) {
+    return 'extra_time_second_half';
+  }
+  if (/half.?time|بین دو نیمه|پایان نیمه اول/.test(explicit)) {
+    return 'halftime';
+  }
+  if (/first half|1st half|نیمه اول/.test(explicit)) {
+    return 'first_half';
+  }
+  if (/second half|2nd half|نیمه دوم/.test(explicit)) {
+    return 'second_half';
+  }
+  if (/\bbreak\b|وقفه/.test(explicit)) {
+    return 'break';
+  }
+  return null;
+}
+
+function liveOutputBase(snapshot) {
+  return {
+    id: snapshot.id,
+    competition_key: snapshot.competition_key,
+    season_key: snapshot.season_key,
+    provider: snapshot.provider,
+    external_match_id: snapshot.external_match_id,
+    home_team_id: snapshot.home_team_id,
+    away_team_id: snapshot.away_team_id,
+    home_name_fa: snapshot.home_name_fa,
+    away_name_fa: snapshot.away_name_fa,
+    home_name_en: null,
+    away_name_en: null,
+    home_logo: snapshot.home_logo,
+    away_logo: snapshot.away_logo,
+    kickoff_utc: snapshot.kickoff_utc,
+    date_fa: snapshot.date_fa,
+    time_iran: snapshot.time_iran,
+    round: snapshot.round,
+    status: snapshot.status,
+    is_live: snapshot.status === 'live',
+    live_phase: null,
+    minute: null,
+    raw_minute: null,
+    status_title: null,
+    home_score: snapshot.home_score,
+    away_score: snapshot.away_score,
+    home_penalties: snapshot.home_penalties,
+    away_penalties: snapshot.away_penalties,
+    stale: false,
+    warnings: [...new Set(snapshot.warnings || [])]
+  };
+}
+
+function normalizeLiveMatch(snapshot, liveRecord = null, options = {}) {
+  const output = liveOutputBase(snapshot);
+  output.stale = options.stale === true;
+  if (options.warning) {
+    output.warnings = [...new Set([...output.warnings, options.warning])];
+  }
+  if (!liveRecord) {
+    return output;
+  }
+
+  const liveStatus = normalizeStatus(liveRecord);
+  const homeScore = scoreValue(liveRecord, 'home');
+  const awayScore = scoreValue(liveRecord, 'away');
+  const homePenalties = penaltyValue(liveRecord, 'home');
+  const awayPenalties = penaltyValue(liveRecord, 'away');
+  const statusTitle = nonEmptyProviderValue(liveRecord.statusTitle);
+  const rawMinuteValue =
+    nonEmptyProviderValue(liveRecord.liveTime) ??
+    nonEmptyProviderValue(liveRecord.minute);
+  const minute = normalizeMinute(rawMinuteValue);
+  const liveKickoff = validKickoffUtc(
+    liveRecord.startOnUtc,
+    liveRecord.utcTime
+  );
+
+  output.home_name_fa =
+    nonEmptyProviderValue(liveRecord.host?.name) ?? output.home_name_fa;
+  output.away_name_fa =
+    nonEmptyProviderValue(liveRecord.guest?.name) ?? output.away_name_fa;
+  output.home_logo =
+    nonEmptyProviderValue(liveRecord.host?.logo) ?? output.home_logo;
+  output.away_logo =
+    nonEmptyProviderValue(liveRecord.guest?.logo) ?? output.away_logo;
+  output.kickoff_utc = liveKickoff ?? output.kickoff_utc;
+  output.date_fa = nonEmptyProviderValue(liveRecord.date) ?? output.date_fa;
+  output.time_iran = nonEmptyProviderValue(liveRecord.time) ?? output.time_iran;
+  output.round = nonEmptyProviderValue(liveRecord.round) ?? output.round;
+  output.status = liveStatus ?? output.status;
+  output.is_live = output.status === 'live';
+  output.live_phase = normalizeLivePhase(statusTitle, rawMinuteValue);
+  output.minute = minute.minute;
+  output.raw_minute = minute.rawMinute;
+  output.status_title = statusTitle;
+  output.home_score = homeScore ?? output.home_score;
+  output.away_score = awayScore ?? output.away_score;
+  output.home_penalties = homePenalties ?? output.home_penalties;
+  output.away_penalties = awayPenalties ?? output.away_penalties;
+
+  return output;
+}
+
 function hasUnresolvedMatchTeam(matchEntries) {
   const identityMaps = buildIdentityMaps(matchEntries, null);
   return matchEntries.some((entry) =>
@@ -410,10 +563,14 @@ module.exports = {
   hasUnresolvedMatchTeam,
   normalizeMatch,
   normalizeMatches,
+  normalizeLiveMatch,
+  normalizeLivePhase,
+  normalizeMinute,
   normalizeStandingRow,
   normalizeStandings,
   normalizeTeams,
   normalizeStatus,
+  penaltyValue,
   scoreValue,
   teamIdFromLink,
   validKickoffUtc
