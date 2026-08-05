@@ -15,7 +15,11 @@ async function main() {
     competitionKey,
     seasonKey
   );
-  const unresolvedTeamIdentities = matchResult.matches.reduce(
+  const teamResult = await competitionDataService.getTeams(
+    competitionKey,
+    seasonKey
+  );
+  const unresolvedMatchTeamIdentities = matchResult.matches.reduce(
     (count, match) =>
       count +
       Number(match.home_team_id === null) +
@@ -34,11 +38,17 @@ async function main() {
       {
         match_count: matchResult.matches.length,
         standings_count: standings.length,
-        unresolved_team_identities: unresolvedTeamIdentities,
+        teams_count: teamResult.teams.length,
+        unresolved_team_identities: teamResult.teams.filter(
+          (team) => team.id === null
+        ).length,
+        unresolved_match_team_identities: unresolvedMatchTeamIdentities,
         skipped_unknown_status: skippedUnknownStatus,
-        warnings: matchResult.warnings,
+        match_warnings: matchResult.warnings,
+        teams_warnings: teamResult.warnings,
         match_sample: matchResult.matches[0] ?? null,
-        standing_sample: standings[0] ?? null
+        standing_sample: standings[0] ?? null,
+        team_sample: teamResult.teams[0] ?? null
       },
       null,
       2

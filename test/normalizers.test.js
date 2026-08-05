@@ -7,6 +7,7 @@ const {
   normalizeMatch,
   normalizeMatches,
   normalizeStandings,
+  normalizeTeams,
   normalizeStatus,
   scoreValue,
   teamIdFromLink,
@@ -144,4 +145,107 @@ test('unknown-status matches are skipped with a count', () => {
 
   assert.equal(result.matches.length, 0);
   assert.equal(result.skippedUnknownStatus, 1);
+});
+
+test('teams merge duplicate resolved records with standings metadata preferred', () => {
+  const result = normalizeTeams(
+    {
+      teams: [
+        { rank: 1, id: 87, name: '  آرسنال  ', logo: 'standing.png' },
+        { rank: 1, id: 87, name: 'نسخه تکراری', logo: 'duplicate.png' }
+      ]
+    },
+    [entry({ host: { id: 87, name: 'نام مسابقه', logo: 'match.png' } })],
+    { competitionKey: 'premier_league', seasonKey: '2026-2027' }
+  );
+
+  assert.equal(result.teams.length, 1);
+  assert.equal(result.teams[0].name_fa, 'آرسنال');
+  assert.equal(result.teams[0].logo, 'standing.png');
+  assert.equal(result.teams[0].external_team_id, 87);
+  assert.equal('rank' in result.teams[0], false);
+});
+
+test('missing standings metadata is filled from match records', () => {
+  const result = normalizeTeams(
+    { teams: [{ rank: 1, id: 87, name: null, logo: null }] },
+    [entry({ host: { id: 87, name: ' آرسنال ', logo: 'match.png' } })],
+    { competitionKey: 'premier_league', seasonKey: '2026-2027' }
+  );
+
+  assert.equal(result.teams[0].name_fa, 'آرسنال');
+  assert.equal(result.teams[0].logo, 'match.png');
+});
+
+test('team ID zero is recovered from a link in normalized teams', () => {
+  const result = normalizeTeams(
+    null,
+    [
+      entry({
+        host: {
+          id: 0,
+          name: 'آرسنال',
+          link: '/football/team/87/arsenal'
+        }
+      })
+    ],
+    { competitionKey: 'premier_league', seasonKey: '2026-2027' }
+  );
+
+  const arsenal = result.teams.find((team) => team.name_fa === 'آرسنال');
+  assert.equal(arsenal.external_team_id, 87);
+  assert.match(arsenal.id, /^mp_team_/);
+  assert.deepEqual(arsenal.warnings, []);
+});
+
+test('unresolved normalized teams keep null IDs and deduplicate exact payload duplicates', () => {
+  const unresolved = { id: 0, name: ' ناشناخته ', logo: 'same.png' };
+  const result = normalizeTeams(
+    null,
+    [entry({ host: unresolved, guest: { ...unresolved } })],
+    { competitionKey: 'premier_league', seasonKey: '2026-2027' }
+  );
+
+  assert.equal(result.teams.length, 1);
+  assert.equal(result.teams[0].id, null);
+  assert.equal(result.teams[0].external_team_id, null);
+  assert.deepEqual(result.teams[0].warnings, ['team_identity_unresolved']);
+  assert.equal(result.unresolvedTeamIdentities, 1);
+});
+
+test('match-derived teams sort deterministically by Persian name then ID', () => {
+  const result = normalizeTeams(
+    null,
+    [
+      entry({
+        host: { id: 90, name: 'لیورپول' },
+        guest: { id: 87, name: 'آرسنال' }
+      })
+    ],
+    { competitionKey: 'premier_league', seasonKey: '2026-2027' }
+  );
+
+  assert.deepEqual(
+    result.teams.map((team) => team.external_team_id),
+    [87, 90]
+  );
+});
+
+test('empty standings derive normalized teams from valid match entries', () => {
+  const result = normalizeTeams(
+    { teams: [] },
+    [
+      entry({
+        host: { id: 87, name: 'آرسنال', logo: 'arsenal.png' },
+        guest: { id: 90, name: 'لیورپول', logo: 'liverpool.png' }
+      })
+    ],
+    { competitionKey: 'premier_league', seasonKey: '2026-2027' }
+  );
+
+  assert.deepEqual(
+    result.teams.map((team) => team.external_team_id),
+    [87, 90]
+  );
+  assert.ok(result.teams.every((team) => team.id.startsWith('mp_team_')));
 });

@@ -94,4 +94,62 @@ async function getStandings(competitionKey, seasonKey) {
   }
 }
 
-module.exports = { PublicApiError, getMatches, getStandings };
+function isExpectedTeamSourceError(error, source) {
+  return (
+    error instanceof ProviderRequestError ||
+    (source === 'standings' && error instanceof StandingsUnavailableError)
+  );
+}
+
+async function getTeams(competitionKey, seasonKey) {
+  const { leagueId, seasonId } = mappingFor(competitionKey, seasonKey);
+  const [standingResult, matchResult] = await Promise.allSettled([
+    varzesh3.fetchSeasonStandings(leagueId, seasonId),
+    varzesh3.fetchSeasonMatches(leagueId, seasonId)
+  ]);
+
+  if (
+    standingResult.status === 'rejected' &&
+    !isExpectedTeamSourceError(standingResult.reason, 'standings')
+  ) {
+    throw standingResult.reason;
+  }
+  if (
+    matchResult.status === 'rejected' &&
+    !isExpectedTeamSourceError(matchResult.reason, 'matches')
+  ) {
+    throw matchResult.reason;
+  }
+
+  const standingsAvailable =
+    standingResult.status === 'fulfilled' &&
+    Array.isArray(standingResult.value?.teams) &&
+    standingResult.value.teams.length > 0;
+  const matchesAvailable = matchResult.status === 'fulfilled';
+  if (!standingsAvailable && !matchesAvailable) {
+    throw new PublicApiError(502, 'Provider unavailable');
+  }
+
+  const normalized = varzesh3.normalizeTeams(
+    standingsAvailable ? standingResult.value : null,
+    matchesAvailable ? matchResult.value.matches : [],
+    { competitionKey, seasonKey }
+  );
+  const warningSet = new Set();
+
+  if (!standingsAvailable && matchesAvailable) {
+    warningSet.add('standings_unavailable_teams_derived_from_matches');
+  }
+  if (normalized.unresolvedTeamIdentities > 0) {
+    warningSet.add(
+      `unresolved_team_identities:${normalized.unresolvedTeamIdentities}`
+    );
+  }
+  if (matchesAvailable && matchResult.value.pageLimitReached) {
+    warningSet.add('provider_page_limit_reached');
+  }
+
+  return { teams: normalized.teams, warnings: [...warningSet] };
+}
+
+module.exports = { PublicApiError, getMatches, getStandings, getTeams };

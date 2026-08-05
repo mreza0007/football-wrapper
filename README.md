@@ -1,6 +1,6 @@
 # Generic Football Wrapper
 
-A standalone, provider-independent HTTP API for exposing football data across multiple competitions and seasons. It currently provides read-only Premier League season matches and standings through a Varzesh3 adapter.
+A standalone, provider-independent HTTP API for exposing football data across multiple competitions and seasons. It currently provides read-only Premier League season matches, standings, and teams through a Varzesh3 adapter.
 
 ## Architecture boundary
 
@@ -38,10 +38,13 @@ The server listens on `PORT`, falling back to `3060`.
 - `GET /competitions/:competitionKey/seasons/:seasonKey`
 - `GET /competitions/:competitionKey/seasons/:seasonKey/matches`
 - `GET /competitions/:competitionKey/seasons/:seasonKey/standings`
+- `GET /competitions/:competitionKey/seasons/:seasonKey/teams`
 
 All responses are JSON. Unknown resources and routes return JSON `404` errors.
 
 The matches endpoint accepts `?status=all`, `upcoming`, `live`, or `finished`; the default is `all`.
+
+The teams endpoint uses non-empty standings as the authoritative season roster and fills missing standings names or logos from season matches. If standings are empty or unavailable, it derives and deduplicates teams from matches and returns a fallback warning. Team IDs use the same stable wrapper identity as match and standings records. A provider team ID of zero is never canonical; unresolved identities remain `null` and include a `team_identity_unresolved` warning.
 
 ## Provider configuration
 
@@ -57,6 +60,6 @@ Match pagination follows only provider `next` and `prev` links on the configured
 ## Current limitations
 
 - Only the Premier League and its 2026-2027 season are configured.
-- Match and standings data are read directly from the configured provider without persistence.
+- Match, standings, and team data are read directly from the configured provider without persistence.
 - Dedicated live-score enrichment and event fetching are not implemented.
 - There is no database, frontend, or authentication.

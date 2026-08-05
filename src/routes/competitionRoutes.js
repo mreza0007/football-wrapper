@@ -122,6 +122,39 @@ router.get('/:competitionKey/seasons/:seasonKey/standings', async (req, res) => 
   });
 });
 
+router.get('/:competitionKey/seasons/:seasonKey/teams', async (req, res) => {
+  const competition = competitionService.getCompetition(
+    req.params.competitionKey
+  );
+
+  if (!competition) {
+    return sendCompetitionNotFound(res);
+  }
+
+  const season = seasonService.getSeason(
+    competition.competition_key,
+    req.params.seasonKey
+  );
+
+  if (!season) {
+    return res.status(404).json({ ok: false, error: 'Season not found' });
+  }
+
+  const result = await competitionDataService.getTeams(
+    competition.competition_key,
+    season.season_key
+  );
+
+  return res.json({
+    ok: true,
+    competition_key: competition.competition_key,
+    season_key: season.season_key,
+    count: result.teams.length,
+    teams: result.teams,
+    warnings: result.warnings
+  });
+});
+
 router.get('/:competitionKey/seasons/:seasonKey', (req, res) => {
   const competition = competitionService.getCompetition(
     req.params.competitionKey

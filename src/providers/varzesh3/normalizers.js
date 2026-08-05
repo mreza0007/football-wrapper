@@ -271,6 +271,129 @@ function normalizeStandings(standing) {
   return standing.teams.map(normalizeStandingRow);
 }
 
+function providerName(name) {
+  if (typeof name !== 'string') {
+    return null;
+  }
+  const trimmed = name.trim();
+  return trimmed || null;
+}
+
+function providerLogo(logo) {
+  return typeof logo === 'string' && logo.trim() ? logo : null;
+}
+
+function unresolvedTeamKey(team, sequence) {
+  const name = identityName(team?.name);
+  const logo = providerLogo(team?.logo) || '';
+  return name ? `unresolved:${name}\u0000${logo}` : `unresolved-record:${sequence}`;
+}
+
+function teamRecord(team, context, identityMaps, rank, sequence) {
+  const externalId = resolveTeamIdentity(team, identityMaps);
+  return {
+    key: externalId
+      ? `resolved:${externalId}`
+      : unresolvedTeamKey(team, sequence),
+    rank: numericValue(rank),
+    id: externalId ? stableId('team', PROVIDER_KEY, externalId) : null,
+    competition_key: context.competitionKey,
+    season_key: context.seasonKey,
+    provider: PROVIDER_KEY,
+    external_team_id: externalId,
+    name_fa: providerName(team?.name),
+    name_en: null,
+    logo: providerLogo(team?.logo),
+    warnings: externalId ? [] : ['team_identity_unresolved']
+  };
+}
+
+function mergeMissingTeamMetadata(target, candidate) {
+  if (target.name_fa === null && candidate.name_fa !== null) {
+    target.name_fa = candidate.name_fa;
+  }
+  if (target.logo === null && candidate.logo !== null) {
+    target.logo = candidate.logo;
+  }
+}
+
+function compareTeams(left, right) {
+  const leftRank = left.rank ?? Number.POSITIVE_INFINITY;
+  const rightRank = right.rank ?? Number.POSITIVE_INFINITY;
+  if (leftRank !== rightRank) {
+    return leftRank - rightRank;
+  }
+
+  const nameComparison = (left.name_fa || '').localeCompare(
+    right.name_fa || '',
+    'fa'
+  );
+  if (nameComparison !== 0) {
+    return nameComparison;
+  }
+
+  const leftId = left.external_team_id ?? Number.POSITIVE_INFINITY;
+  const rightId = right.external_team_id ?? Number.POSITIVE_INFINITY;
+  if (leftId !== rightId) {
+    return leftId - rightId;
+  }
+
+  return (left.logo || '').localeCompare(right.logo || '');
+}
+
+function normalizeTeams(standing, matchEntries, context) {
+  const standingsAvailable =
+    Array.isArray(standing?.teams) && standing.teams.length > 0;
+  const identityMaps = buildIdentityMaps(matchEntries, standing);
+  const records = new Map();
+  let sequence = 0;
+
+  for (const team of standingsAvailable ? standing.teams : []) {
+    const candidate = teamRecord(
+      team,
+      context,
+      identityMaps,
+      team?.rank,
+      sequence++
+    );
+    const existing = records.get(candidate.key);
+    if (existing) {
+      mergeMissingTeamMetadata(existing, candidate);
+    } else {
+      records.set(candidate.key, candidate);
+    }
+  }
+
+  for (const entry of matchEntries) {
+    for (const team of [entry.match?.host, entry.match?.guest]) {
+      if (!team || typeof team !== 'object') {
+        continue;
+      }
+      const candidate = teamRecord(
+        team,
+        context,
+        identityMaps,
+        null,
+        sequence++
+      );
+      const existing = records.get(candidate.key);
+
+      if (existing) {
+        mergeMissingTeamMetadata(existing, candidate);
+      } else if (!standingsAvailable) {
+        records.set(candidate.key, candidate);
+      }
+    }
+  }
+
+  const teams = [...records.values()]
+    .sort(compareTeams)
+    .map(({ key, rank, ...team }) => team);
+  const unresolvedTeamIdentities = teams.filter((team) => team.id === null).length;
+
+  return { teams, unresolvedTeamIdentities };
+}
+
 function hasUnresolvedMatchTeam(matchEntries) {
   const identityMaps = buildIdentityMaps(matchEntries, null);
   return matchEntries.some((entry) =>
@@ -289,6 +412,7 @@ module.exports = {
   normalizeMatches,
   normalizeStandingRow,
   normalizeStandings,
+  normalizeTeams,
   normalizeStatus,
   scoreValue,
   teamIdFromLink,
