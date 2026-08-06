@@ -547,6 +547,379 @@ function normalizeLiveMatch(snapshot, liveRecord = null, options = {}) {
   return output;
 }
 
+function eventTypeToken(value) {
+  return typeof value === 'string'
+    ? value.trim().toLowerCase().replace(/[_-]+/g, ' ')
+    : '';
+}
+
+function eventText(event, fields) {
+  return fields
+    .map((field) => eventTypeToken(event?.[field]))
+    .filter(Boolean)
+    .join(' ');
+}
+
+function isExplicitTrue(value) {
+  return value === true || value === 1 || value === '1';
+}
+
+function isPenaltyShootoutEvent(event) {
+  const text = eventText(event, [
+    'type',
+    'typeTitle',
+    'title',
+    'description',
+    'eventTitle',
+    'penaltyResultTitle',
+    'phase',
+    'stage',
+    'scopeTitle'
+  ]);
+  return (
+    numericValue(event?.scope) === 6 ||
+    isExplicitTrue(event?.isPenaltyShootout) ||
+    isExplicitTrue(event?.isShootout) ||
+    eventTypeToken(event?.phase) === 'penalty shootout' ||
+    /penalty shootout|shootout|ضربات پنالتی/.test(text)
+  );
+}
+
+function hasExplicitSecondYellow(event) {
+  if (
+    isExplicitTrue(event?.isSecondYellow) ||
+    isExplicitTrue(event?.secondYellow) ||
+    isExplicitTrue(event?.isSecondYellowCard)
+  ) {
+    return true;
+  }
+  const text = eventText(event, [
+    'type',
+    'typeTitle',
+    'cardType',
+    'cardTypeTitle',
+    'title',
+    'description',
+    'eventTitle',
+    'name'
+  ]);
+  return /second yellow(?: card)?|yellow red|زرد دوم|دومین کارت زرد/.test(text);
+}
+
+function hasExplicitScoredPenalty(event) {
+  if (
+    [
+      event?.isGoal,
+      event?.isScored,
+      event?.scored,
+      event?.goal,
+      event?.isSuccessful
+    ].some(isExplicitTrue)
+  ) {
+    return true;
+  }
+  return [
+    event?.result,
+    event?.outcome,
+    event?.decision,
+    event?.penaltyResult,
+    event?.penaltyResultTitle
+  ].some((value) =>
+    /^(?:goal|scored|successful|converted|گل|موفق)$/.test(
+      eventTypeToken(value)
+    )
+  );
+}
+
+function normalizeEventType(event) {
+  const rawType = event?.eventType ?? event?.type ?? event?.typeTitle;
+  const numericType = numericValue(rawType);
+  const type = eventTypeToken(rawType);
+  const cardType = eventTypeToken(event?.cardType);
+  const numericCardType = numericValue(event?.cardType);
+  const numericPenaltyResult = numericValue(event?.penaltyResult);
+  const text = eventText(event, [
+    'type',
+    'typeTitle',
+    'goalType',
+    'cardTypeTitle',
+    'title',
+    'description',
+    'eventTitle',
+    'decisionTitle',
+    'name',
+    'penaltyResultTitle'
+  ]);
+
+  if (isPenaltyShootoutEvent(event)) {
+    return 'other';
+  }
+  if (
+    numericType === 5 ||
+    /goal disallowed|disallowed goal|var disallowed|گل مردود/.test(text)
+  ) {
+    return 'var';
+  }
+  if (hasExplicitSecondYellow(event)) {
+    return 'second_yellow_red';
+  }
+  if (numericType === 7 || /own goal|گل به خودی/.test(text)) {
+    return 'own_goal';
+  }
+  if (
+    numericType === 8 ||
+    numericCardType === 2 ||
+    numericCardType === 3 ||
+    /red card|کارت قرمز/.test(text) ||
+    /red|قرمز/.test(cardType)
+  ) {
+    return 'red_card';
+  }
+  if (
+    numericType === 2 ||
+    numericCardType === 1 ||
+    /yellow card|کارت زرد/.test(text) ||
+    /yellow|زرد/.test(cardType)
+  ) {
+    return 'yellow_card';
+  }
+  const penaltyContext =
+    numericType === 3 ||
+    numericType === 9 ||
+    /penalty|پنالتی/.test(text) ||
+    /penalty|پنالتی/.test(type);
+  if (
+    numericType === 9 ||
+    (penaltyContext && numericPenaltyResult === 3) ||
+    (penaltyContext &&
+      /missed|saved|failed|not scored|از دست|مهار|خراب|ناموفق/.test(text))
+  ) {
+    return 'missed_penalty';
+  }
+  if (
+    penaltyContext &&
+    (hasExplicitScoredPenalty(event) ||
+      /penalty goal|گل پنالتی|(?:^| )(?:goal|scored|successful|converted)(?: |$)|گل|موفق/.test(
+        text
+      ))
+  ) {
+    return 'penalty_goal';
+  }
+  if (numericType === 3) {
+    return 'other';
+  }
+  if (numericType === 1 || /^(goal|گل)$/.test(type)) {
+    return 'goal';
+  }
+  if (numericType === 4 || /substitution|substitute|تعویض/.test(type)) {
+    return 'substitution';
+  }
+  if (numericType === 6 || /^var$|video assistant|بازبینی ویدئویی/.test(type)) {
+    return 'var';
+  }
+  if (numericType === 11 || /half.?time|پایان نیمه اول/.test(type)) {
+    return 'halftime';
+  }
+  if (numericType === 12 || /full.?time|پایان بازی|پایان مسابقه/.test(type)) {
+    return 'fulltime';
+  }
+  if (/kick.?off|شروع بازی/.test(type)) {
+    return 'kickoff';
+  }
+  return 'other';
+}
+
+function explicitEventSide(value) {
+  if (value === 0 || value === '0') {
+    return 'home';
+  }
+  if (value === 1 || value === '1') {
+    return 'away';
+  }
+  const normalized = eventTypeToken(value);
+  if (normalized === 'home' || normalized === 'host') {
+    return 'home';
+  }
+  if (normalized === 'away' || normalized === 'guest') {
+    return 'away';
+  }
+  return null;
+}
+
+function resolveEventTeam(event, snapshot) {
+  const explicitSide = explicitEventSide(
+    event?.side ?? event?.teamSide ?? event?.sideTitle
+  );
+  if (explicitSide) {
+    return {
+      side: explicitSide,
+      teamId:
+        explicitSide === 'home'
+          ? snapshot.home_team_id ?? null
+          : snapshot.away_team_id ?? null
+    };
+  }
+
+  const eventTeamId = externalTeamId(event?.teamId ?? event?.team?.id);
+  const homeExternalId = externalTeamId(snapshot.home_external_team_id);
+  const awayExternalId = externalTeamId(snapshot.away_external_team_id);
+  if (eventTeamId && eventTeamId === homeExternalId) {
+    return { side: 'home', teamId: snapshot.home_team_id ?? null };
+  }
+  if (eventTeamId && eventTeamId === awayExternalId) {
+    return { side: 'away', teamId: snapshot.away_team_id ?? null };
+  }
+
+  const linkedTeamId = teamIdFromLink(event?.teamLink ?? event?.team?.link);
+  if (linkedTeamId && linkedTeamId === homeExternalId) {
+    return { side: 'home', teamId: snapshot.home_team_id ?? null };
+  }
+  if (linkedTeamId && linkedTeamId === awayExternalId) {
+    return { side: 'away', teamId: snapshot.away_team_id ?? null };
+  }
+  return { side: null, teamId: null };
+}
+
+function normalizedProviderName(...values) {
+  for (const value of values) {
+    const normalized = nonEmptyProviderValue(value);
+    if (normalized !== null) {
+      return String(normalized).trim() || null;
+    }
+  }
+  return null;
+}
+
+function rawEventType(event) {
+  const value = event?.eventType ?? event?.type ?? event?.typeTitle;
+  return typeof value === 'string' || typeof value === 'number' ? value : null;
+}
+
+function normalizedExternalEventId(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const normalized = String(value).trim();
+  if (!normalized) {
+    return null;
+  }
+  return typeof value === 'string' ? normalized : value;
+}
+
+function normalizeEvent(event, snapshot, originalIndex) {
+  const normalizedType = normalizeEventType(event);
+  const externalEventId = normalizedExternalEventId(event?.id);
+  const minuteValue =
+    nonEmptyProviderValue(event?.time) ??
+    nonEmptyProviderValue(event?.rawTime) ??
+    nonEmptyProviderValue(event?.minute) ??
+    nonEmptyProviderValue(event?.eventTime);
+  const minute = normalizeMinute(minuteValue);
+  const team = resolveEventTeam(event, snapshot);
+  const primaryPlayer =
+    normalizedType === 'substitution'
+      ? normalizedProviderName(event?.playerName)
+      : normalizedProviderName(
+          event?.playerName,
+          event?.strickerName,
+          event?.strikerName,
+          event?.offendingPlayerName,
+          event?.kickerName
+        );
+  const playerIn = normalizedProviderName(
+    event?.incomingPlayerName,
+    event?.playerInName
+  );
+  const playerOut = normalizedProviderName(
+    event?.outgoingPlayerName,
+    event?.playerOutName
+  );
+  const secondaryPlayer = normalizedProviderName(
+    event?.assisterName,
+    event?.assistName,
+    event?.secondaryPlayerName
+  );
+  const teamSpecific =
+    [
+      'goal',
+      'own_goal',
+      'penalty_goal',
+      'missed_penalty',
+      'yellow_card',
+      'second_yellow_red',
+      'red_card',
+      'substitution'
+    ].includes(normalizedType) ||
+    primaryPlayer !== null ||
+    playerIn !== null ||
+    playerOut !== null;
+  const warnings = [];
+  if (teamSpecific && (team.side === null || team.teamId === null)) {
+    warnings.push('event_team_unresolved');
+  }
+  const scores = { goals: event?.matchResult ?? event?.score ?? event?.goals };
+  const sequence = numericValue(
+    event?.sequence ?? event?.order ?? event?.sortOrder
+  );
+
+  return {
+    _originalIndex: originalIndex,
+    _sequence: sequence,
+    id: externalEventId
+      ? stableId(
+          'event',
+          PROVIDER_KEY,
+          `${snapshot.external_match_id}:${String(externalEventId)}`
+        )
+      : null,
+    match_id: snapshot.id,
+    competition_key: snapshot.competition_key,
+    season_key: snapshot.season_key,
+    provider: PROVIDER_KEY,
+    external_event_id: externalEventId,
+    normalized_type: normalizedType,
+    raw_type: rawEventType(event),
+    minute: minute.minute,
+    raw_minute: minute.rawMinute,
+    team_side: team.side,
+    team_id: team.teamId,
+    player_name_fa: primaryPlayer,
+    player_name_en: null,
+    secondary_player_name_fa: secondaryPlayer,
+    secondary_player_name_en: null,
+    player_in_name_fa: playerIn,
+    player_in_name_en: null,
+    player_out_name_fa: playerOut,
+    player_out_name_en: null,
+    home_score: scoreValue(scores, 'home'),
+    away_score: scoreValue(scores, 'away'),
+    is_scoring_event: ['goal', 'own_goal', 'penalty_goal'].includes(
+      normalizedType
+    ),
+    description_fa: normalizedProviderName(event?.description),
+    warnings
+  };
+}
+
+function normalizeEvents(events, snapshot) {
+  return events
+    .map((event, index) => normalizeEvent(event, snapshot, index))
+    .sort((left, right) => {
+      const leftMinute = left.minute ?? Number.POSITIVE_INFINITY;
+      const rightMinute = right.minute ?? Number.POSITIVE_INFINITY;
+      if (leftMinute !== rightMinute) {
+        return leftMinute - rightMinute;
+      }
+      const leftSequence = left._sequence ?? Number.POSITIVE_INFINITY;
+      const rightSequence = right._sequence ?? Number.POSITIVE_INFINITY;
+      if (leftSequence !== rightSequence) {
+        return leftSequence - rightSequence;
+      }
+      return left._originalIndex - right._originalIndex;
+    })
+    .map(({ _originalIndex, _sequence, ...event }) => event);
+}
+
 function hasUnresolvedMatchTeam(matchEntries) {
   const identityMaps = buildIdentityMaps(matchEntries, null);
   return matchEntries.some((entry) =>
@@ -566,12 +939,16 @@ module.exports = {
   normalizeLiveMatch,
   normalizeLivePhase,
   normalizeMinute,
+  normalizeEvent,
+  normalizeEvents,
+  normalizeEventType,
   normalizeStandingRow,
   normalizeStandings,
   normalizeTeams,
   normalizeStatus,
   penaltyValue,
   scoreValue,
+  resolveEventTeam,
   teamIdFromLink,
   validKickoffUtc
 };

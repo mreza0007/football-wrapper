@@ -4,6 +4,7 @@ require('dotenv').config({ quiet: true });
 
 const competitionDataService = require('../src/services/competitionDataService');
 const liveMatchService = require('../src/services/liveMatchService');
+const matchEventService = require('../src/services/matchEventService');
 const varzesh3 = require('../src/providers/varzesh3');
 
 async function main() {
@@ -23,6 +24,9 @@ async function main() {
   );
   const todayLivescoreMatches = await varzesh3.getTodayLivescore();
   const liveLookup = await liveMatchService.getLiveMatch(
+    matchResult.matches[0].id
+  );
+  const eventsLookup = await matchEventService.getMatchEvents(
     matchResult.matches[0].id
   );
   const unresolvedMatchTeamIdentities = matchResult.matches.reduce(
@@ -50,6 +54,9 @@ async function main() {
           (match) => varzesh3.normalizeStatus(match) === 'live'
         ).length,
         live_lookup_mode: liveLookup.mode,
+        events_lookup_mode: eventsLookup.mode,
+        events_count: eventsLookup.events.length,
+        events_warnings: eventsLookup.warnings,
         unresolved_team_identities: teamResult.teams.filter(
           (team) => team.id === null
         ).length,
@@ -60,7 +67,8 @@ async function main() {
         match_sample: matchResult.matches[0] ?? null,
         standing_sample: standings[0] ?? null,
         team_sample: teamResult.teams[0] ?? null,
-        live_endpoint_sample: liveLookup.match
+        live_endpoint_sample: liveLookup.match,
+        event_sample: eventsLookup.events[0] ?? null
       },
       null,
       2
