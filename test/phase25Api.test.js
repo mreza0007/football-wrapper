@@ -14,6 +14,7 @@ const originalGetMatchEvents = varzesh3.getMatchEvents;
 
 test.beforeEach(() => {
   matchLocatorService.clearMatchIndex();
+  varzesh3.clearSeasonDataCache();
   varzesh3.clearEventCache();
   varzesh3.clearLivescoreCache();
 });
@@ -22,6 +23,7 @@ test.afterEach(() => {
   globalThis.fetch = originalFetch;
   varzesh3.getMatchEvents = originalGetMatchEvents;
   matchLocatorService.clearMatchIndex();
+  varzesh3.clearSeasonDataCache();
   varzesh3.clearEventCache();
   varzesh3.clearLivescoreCache();
 });

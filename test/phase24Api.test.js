@@ -15,6 +15,7 @@ const originalGetTodayLivescore = varzesh3.getTodayLivescore;
 
 test.beforeEach(() => {
   matchLocatorService.clearMatchIndex();
+  varzesh3.clearSeasonDataCache();
   varzesh3.clearLivescoreCache();
 });
 
@@ -22,6 +23,7 @@ test.afterEach(() => {
   globalThis.fetch = originalFetch;
   varzesh3.getTodayLivescore = originalGetTodayLivescore;
   matchLocatorService.clearMatchIndex();
+  varzesh3.clearSeasonDataCache();
   varzesh3.clearLivescoreCache();
 });
 

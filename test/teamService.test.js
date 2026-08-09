@@ -6,6 +6,14 @@ const assert = require('node:assert/strict');
 const varzesh3 = require('../src/providers/varzesh3');
 const competitionDataService = require('../src/services/competitionDataService');
 
+test.beforeEach(() => {
+  varzesh3.clearSeasonDataCache();
+});
+
+test.afterEach(() => {
+  varzesh3.clearSeasonDataCache();
+});
+
 test('teams service preserves provider page-limit warning without duplication', async () => {
   const originalStandings = varzesh3.fetchSeasonStandings;
   const originalMatches = varzesh3.fetchSeasonMatches;

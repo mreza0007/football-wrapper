@@ -22,6 +22,14 @@ function snapshot(externalId = 101, name = 'آرسنال') {
   };
 }
 
+function scopedSnapshot(externalId, competitionKey, seasonKey) {
+  return {
+    ...snapshot(externalId),
+    competition_key: competitionKey,
+    season_key: seasonKey
+  };
+}
+
 test('stable match ID resolves through an already populated index', async () => {
   const locator = createMatchLocator({ loadMatches: async () => ({ matches: [] }) });
   const match = snapshot();
@@ -125,4 +133,230 @@ test('provider failure while refreshing the index returns provider unavailable',
     locator.resolve(stableId('match', 'varzesh3', 999)),
     MatchLookupProviderError
   );
+});
+
+test('successful refresh guard prevents repeated scans for unknown stable IDs', async () => {
+  let builds = 0;
+  const locator = createMatchLocator({
+    refreshGuardMs: 100,
+    loadMatches: async () => {
+      builds += 1;
+      return { matches: [snapshot()], providerFailure: false };
+    }
+  });
+
+  await assert.rejects(
+    locator.resolve(stableId('match', 'varzesh3', 998)),
+    MatchNotFoundError
+  );
+  await assert.rejects(
+    locator.resolve(stableId('match', 'varzesh3', 999)),
+    MatchNotFoundError
+  );
+  await assert.rejects(
+    locator.resolve(stableId('match', 'varzesh3', 998)),
+    MatchNotFoundError
+  );
+  assert.equal(builds, 1);
+});
+
+test('refresh guard expiry allows another full lookup refresh', async () => {
+  let currentTime = 0;
+  let builds = 0;
+  const locator = createMatchLocator({
+    now: () => currentTime,
+    refreshGuardMs: 100,
+    loadMatches: async () => {
+      builds += 1;
+      return { matches: [], providerFailure: false };
+    }
+  });
+
+  await assert.rejects(
+    locator.resolve(stableId('match', 'varzesh3', 998)),
+    MatchNotFoundError
+  );
+  currentTime = 100;
+  await assert.rejects(
+    locator.resolve(stableId('match', 'varzesh3', 999)),
+    MatchNotFoundError
+  );
+  assert.equal(builds, 2);
+});
+
+test('partial provider failure does not activate the successful refresh guard', async () => {
+  let builds = 0;
+  const locator = createMatchLocator({
+    refreshGuardMs: 100,
+    loadMatches: async () => {
+      builds += 1;
+      return {
+        matches: [],
+        providerFailure: true,
+        completeSuccess: false,
+        scopes: [
+          {
+            competitionKey: 'premier_league',
+            seasonKey: '2026-2027',
+            succeeded: false,
+            matches: []
+          }
+        ]
+      };
+    }
+  });
+
+  await assert.rejects(
+    locator.resolve(stableId('match', 'varzesh3', 998)),
+    MatchLookupProviderError
+  );
+  await assert.rejects(
+    locator.resolve(stableId('match', 'varzesh3', 999)),
+    MatchLookupProviderError
+  );
+  assert.equal(builds, 2);
+});
+
+test('contradictory complete success metadata does not activate the refresh guard', async () => {
+  let builds = 0;
+  const locator = createMatchLocator({
+    refreshGuardMs: 100,
+    loadMatches: async () => {
+      builds += 1;
+      return {
+        matches: [],
+        providerFailure: false,
+        completeSuccess: true,
+        scopes: [
+          {
+            competitionKey: 'competition_a',
+            seasonKey: 'season_a',
+            succeeded: true,
+            matches: []
+          },
+          {
+            competitionKey: 'competition_b',
+            seasonKey: 'season_b',
+            succeeded: false,
+            matches: []
+          }
+        ]
+      };
+    }
+  });
+
+  await assert.rejects(
+    locator.resolve(stableId('match', 'varzesh3', 998)),
+    MatchNotFoundError
+  );
+  await assert.rejects(
+    locator.resolve(stableId('match', 'varzesh3', 999)),
+    MatchNotFoundError
+  );
+  assert.equal(builds, 2);
+});
+
+test('complete successful scopes activate the refresh guard', async () => {
+  let builds = 0;
+  const locator = createMatchLocator({
+    refreshGuardMs: 100,
+    loadMatches: async () => {
+      builds += 1;
+      return {
+        matches: [],
+        providerFailure: false,
+        completeSuccess: true,
+        scopes: [
+          {
+            competitionKey: 'competition_a',
+            seasonKey: 'season_a',
+            succeeded: true,
+            matches: []
+          },
+          {
+            competitionKey: 'competition_b',
+            seasonKey: 'season_b',
+            succeeded: true,
+            matches: []
+          }
+        ]
+      };
+    }
+  });
+
+  await assert.rejects(
+    locator.resolve(stableId('match', 'varzesh3', 998)),
+    MatchNotFoundError
+  );
+  await assert.rejects(
+    locator.resolve(stableId('match', 'varzesh3', 999)),
+    MatchNotFoundError
+  );
+  assert.equal(builds, 1);
+});
+
+test('successful scope refresh prunes obsolete entries without touching another scope', async () => {
+  const obsolete = scopedSnapshot(101, 'competition_a', 'season_a');
+  const retained = scopedSnapshot(102, 'competition_a', 'season_a');
+  const otherScope = scopedSnapshot(201, 'competition_b', 'season_b');
+  let builds = 0;
+  const locator = createMatchLocator({
+    refreshGuardMs: 100,
+    loadMatches: async () => {
+      builds += 1;
+      return {
+        matches: [retained],
+        providerFailure: false,
+        completeSuccess: true,
+        scopes: [
+          {
+            competitionKey: 'competition_a',
+            seasonKey: 'season_a',
+            succeeded: true,
+            matches: [retained]
+          }
+        ]
+      };
+    }
+  });
+  locator.indexMatches([obsolete, retained, otherScope]);
+
+  await assert.rejects(
+    locator.resolve(stableId('match', 'varzesh3', 999)),
+    MatchNotFoundError
+  );
+  await assert.rejects(locator.resolve(obsolete.id), MatchNotFoundError);
+  assert.equal((await locator.resolve(retained.id)).snapshot.id, retained.id);
+  assert.equal(
+    (await locator.resolve(otherScope.id)).snapshot.id,
+    otherScope.id
+  );
+  assert.equal(builds, 1);
+});
+
+test('failed scope refresh preserves its existing entries', async () => {
+  const preserved = scopedSnapshot(101, 'competition_a', 'season_a');
+  const locator = createMatchLocator({
+    refreshGuardMs: 100,
+    loadMatches: async () => ({
+      matches: [],
+      providerFailure: true,
+      completeSuccess: false,
+      scopes: [
+        {
+          competitionKey: 'competition_a',
+          seasonKey: 'season_a',
+          succeeded: false,
+          matches: []
+        }
+      ]
+    })
+  });
+  locator.indexMatches([preserved]);
+
+  await assert.rejects(
+    locator.resolve(stableId('match', 'varzesh3', 999)),
+    MatchLookupProviderError
+  );
+  assert.equal((await locator.resolve(preserved.id)).snapshot.id, preserved.id);
 });

@@ -5,11 +5,17 @@ const assert = require('node:assert/strict');
 const request = require('supertest');
 
 const app = require('../src/app');
+const varzesh3 = require('../src/providers/varzesh3');
 
 const originalFetch = globalThis.fetch;
 
+test.beforeEach(() => {
+  varzesh3.clearSeasonDataCache();
+});
+
 test.afterEach(() => {
   globalThis.fetch = originalFetch;
+  varzesh3.clearSeasonDataCache();
 });
 
 function response(body, status = 200, contentType = 'application/json') {

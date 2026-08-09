@@ -76,7 +76,11 @@ The events endpoint uses the same stable match lookup and confirmed Varzesh3 `ev
 - `VARZESH3_BASE_URL` defaults to `https://web-api.varzesh3.com/v2.0`.
 - `VARZESH3_TIMEOUT_MS` defaults to `30000` milliseconds.
 - `VARZESH3_LIVESCORE_CACHE_TTL_MS` defaults to `10000` milliseconds.
+- `VARZESH3_SEASON_MATCHES_CACHE_TTL_MS` defaults to `30000` milliseconds.
+- `VARZESH3_STANDINGS_CACHE_TTL_MS` defaults to `30000` milliseconds.
+- `VARZESH3_SEASON_CACHE_MAX_ENTRIES` defaults to `100` total season-data entries.
 - `MATCH_INDEX_TTL_MS` defaults to `300000` milliseconds.
+- `MATCH_INDEX_REFRESH_GUARD_MS` defaults to `30000` milliseconds.
 - `VARZESH3_EVENTS_CACHE_TTL_MS` defaults to `10000` milliseconds.
 - `VARZESH3_EVENTS_CACHE_MAX_ENTRIES` defaults to `500` matches.
 
@@ -86,7 +90,21 @@ Match pagination follows only provider `next` and `prev` links on the configured
 
 `npm run probe:varzesh3` is the manual online provider check. It prints counts and one normalized sample of each resource, never the full provider payload. The regular test suite mocks `fetch` and stays offline.
 
-The match index and today-livescore cache are process-local and are rebuilt after restarts. They coordinate concurrent refreshes but are not shared across multiple server processes.
+Season matches and standings use one shared process-local provider cache before
+public normalization. Matches, standings, teams, and match-index hydration reuse
+the same season-scoped entries and share concurrent in-flight requests. Matches
+and standings have separate cache keys, and public match status filters are
+applied after the full season result is retrieved. Set either season-data TTL to
+`0` to disable reuse. The combined cache is bounded by
+`VARZESH3_SEASON_CACHE_MAX_ENTRIES` using least-recently-used eviction.
+
+The match index, season-data cache, and today-livescore cache are process-local
+and are rebuilt after restarts. They are not shared across server processes.
+After a completely successful configured-season index refresh, unknown stable
+match IDs are rejected without another full scan for
+`MATCH_INDEX_REFRESH_GUARD_MS`. Partial provider failures do not activate that
+guard. Successful scope refreshes prune obsolete matches only from that scope;
+failed scopes preserve their existing entries.
 
 The per-match event cache is also process-local and size-bounded. Concurrent requests for one match share a refresh. If an expired cached event result exists and the provider refresh fails, the endpoint returns that cached result as stale with `events_provider_unavailable_using_cache`; without cache, provider failures return `502`.
 

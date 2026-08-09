@@ -36,12 +36,12 @@ async function getMatches(competitionKey, seasonKey, status = 'all') {
   const { leagueId, seasonId } = mappingFor(competitionKey, seasonKey);
 
   try {
-    const result = await varzesh3.fetchSeasonMatches(leagueId, seasonId);
+    const result = await varzesh3.getSeasonMatches(leagueId, seasonId);
     let standing = null;
 
     if (varzesh3.hasUnresolvedMatchTeam(result.matches)) {
       try {
-        standing = await varzesh3.fetchSeasonStandings(leagueId, seasonId);
+        standing = await varzesh3.getSeasonStandings(leagueId, seasonId);
       } catch (error) {
         if (
           error instanceof ProviderRequestError ||
@@ -86,7 +86,7 @@ async function getStandings(competitionKey, seasonKey) {
   const { leagueId, seasonId } = mappingFor(competitionKey, seasonKey);
 
   try {
-    const standing = await varzesh3.fetchSeasonStandings(leagueId, seasonId);
+    const standing = await varzesh3.getSeasonStandings(leagueId, seasonId);
     return varzesh3.normalizeStandings(standing);
   } catch (error) {
     if (error instanceof StandingsUnavailableError) {
@@ -106,8 +106,8 @@ function isExpectedTeamSourceError(error, source) {
 async function getTeams(competitionKey, seasonKey) {
   const { leagueId, seasonId } = mappingFor(competitionKey, seasonKey);
   const [standingResult, matchResult] = await Promise.allSettled([
-    varzesh3.fetchSeasonStandings(leagueId, seasonId),
-    varzesh3.fetchSeasonMatches(leagueId, seasonId)
+    varzesh3.getSeasonStandings(leagueId, seasonId),
+    varzesh3.getSeasonMatches(leagueId, seasonId)
   ]);
 
   if (
