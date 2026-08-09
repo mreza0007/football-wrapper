@@ -35,7 +35,8 @@ how long active requests may finish during graceful shutdown.
 
 Keep the wrapper behind Nginx rather than exposing its application port
 directly. Nginx should provide the public network boundary and forward traffic
-to the loopback listener.
+to the loopback listener when public or remote access is introduced. Nginx is
+not needed for loopback traffic from MatchPulse on the same VPS.
 
 `SIGTERM` and `SIGINT` stop new connections and allow active requests to finish.
 Connections still open after the shutdown timeout are force-closed and produce
@@ -43,6 +44,78 @@ a nonzero process exit status. Lifecycle and server-side HTTP failures are
 logged concisely to stdout or stderr without request bodies, headers, provider
 payloads, provider URLs, credentials, or stack traces. Successful requests are
 not logged by the application.
+
+## Production deployment
+
+The generic wrapper is an independent service with these production locations:
+
+- Application directory: `/opt/football-wrapper`
+- Environment file: `/etc/football-wrapper/football-wrapper.env`
+- systemd unit: `/etc/systemd/system/generic-football-wrapper.service`
+- Service account and group: `football-wrapper`
+
+Use `.env.production.example` as the value template for the environment file.
+The application source should be owned by `root:football-wrapper`; the service
+account needs read and execute access but should not normally have write access.
+The environment file should be owned by `root:football-wrapper` with mode
+`0640`.
+
+Before installing the supplied unit, verify the absolute Node.js path on the
+VPS and adjust `ExecStart` if it is not `/usr/bin/node`:
+
+```sh
+command -v node
+```
+
+Install production dependencies from the application directory without
+copying a workstation's `node_modules`:
+
+```sh
+npm ci --omit=dev
+```
+
+Install `deploy/generic-football-wrapper.service` at the systemd unit path and
+load it with `systemctl daemon-reload`. A daemon reload is required only when
+the unit changes. Enable and start the service according to the VPS's normal
+administration policy.
+
+Use these bounded operational checks:
+
+```sh
+systemctl status generic-football-wrapper.service --no-pager
+journalctl -u generic-football-wrapper.service -n 100 --no-pager
+curl --fail --silent --show-error http://127.0.0.1:3060/health
+systemctl restart generic-football-wrapper.service
+```
+
+For an update:
+
+1. Stop `generic-football-wrapper.service`.
+2. Replace the application source with a clean new revision.
+3. Run `npm ci --omit=dev` in `/opt/football-wrapper`.
+4. Restore the intended `root:football-wrapper` ownership if necessary.
+5. Start or restart the service.
+6. Verify service status and the bounded journal output above.
+7. Run the loopback health check above.
+
+The repository currently has no Git remote. Supported manual source-transfer
+options are a `git archive` from a known clean commit followed by SCP, or
+rsync/SCP from a clean working tree. Do not transfer `node_modules`, `.env`, test
+artifacts, temporary probe payloads, or other generated files.
+
+MatchPulse on the same VPS should eventually consume
+`http://127.0.0.1:3060`. Keep the wrapper bound to loopback, do not add Nginx
+for this internal traffic, and do not open port `3060` in the firewall.
+MatchPulse integration is a separate phase.
+
+Deployment is isolated from the existing World Cup wrapper:
+
+- `/opt/worldcup2026` and its systemd services remain untouched.
+- `generic-football-wrapper.service` is independent and does not replace the
+  World Cup wrapper.
+- This phase does not change `WORLDCUP_WRAPPER_URL` or MatchPulse routes, add
+  Premier League UI/data consumption, remove `worldcup2026`, or expose the new
+  wrapper publicly.
 
 ## Endpoints
 
