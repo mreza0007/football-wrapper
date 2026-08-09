@@ -27,7 +27,22 @@ npm test
 npm run probe:varzesh3
 ```
 
-The server listens on `PORT`, falling back to `3060`.
+The production server listens on `HOST` and `PORT`. `HOST` defaults to
+`127.0.0.1` and `PORT` defaults to `3060`, so the service is loopback-only by
+default. Set `HOST` explicitly when container or local-network binding is
+required. `SHUTDOWN_TIMEOUT_MS` defaults to `10000` milliseconds and controls
+how long active requests may finish during graceful shutdown.
+
+Keep the wrapper behind Nginx rather than exposing its application port
+directly. Nginx should provide the public network boundary and forward traffic
+to the loopback listener.
+
+`SIGTERM` and `SIGINT` stop new connections and allow active requests to finish.
+Connections still open after the shutdown timeout are force-closed and produce
+a nonzero process exit status. Lifecycle and server-side HTTP failures are
+logged concisely to stdout or stderr without request bodies, headers, provider
+payloads, provider URLs, credentials, or stack traces. Successful requests are
+not logged by the application.
 
 ## Endpoints
 
@@ -53,6 +68,10 @@ The live endpoint resolves the opaque stable match ID through an in-memory seaso
 The events endpoint uses the same stable match lookup and confirmed Varzesh3 `eventType` behavior to normalize goals, own goals, penalty goals, missed penalties, yellow/red cards, substitutions, VAR, kickoff, halftime, and fulltime records. Penalty event type `3` remains neutral unless an explicit provider outcome proves that it was scored or missed. Penalty-shootout kicks are not treated as regulation scoring events, and a second-yellow red card requires explicit provider evidence rather than a numeric card subtype alone. Provider event IDs produce deterministic match-scoped wrapper IDs; events without provider IDs retain `null` IDs and are never assigned fabricated canonical identities. Structurally empty responses return an empty success, while provider `404`/`410` responses return `events_not_available`.
 
 ## Provider configuration
+
+- `HOST` defaults to `127.0.0.1`.
+- `PORT` defaults to `3060`.
+- `SHUTDOWN_TIMEOUT_MS` defaults to `10000` milliseconds.
 
 - `VARZESH3_BASE_URL` defaults to `https://web-api.varzesh3.com/v2.0`.
 - `VARZESH3_TIMEOUT_MS` defaults to `30000` milliseconds.
