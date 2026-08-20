@@ -1,0 +1,19 @@
+[Unit]
+Description=Generic Football Wrapper
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=football-wrapper
+Group=football-wrapper
+WorkingDirectory=/opt/football-wrapper
+EnvironmentFile=/etc/football-wrapper/football-wrapper.env
+ExecStart=/usr/bin/node /opt/football-wrapper/src/server.js
+Restart=on-failure
+RestartSec=5s
+KillSignal=SIGTERM
+TimeoutStopSec=15s
+
+[Install]
+WantedBy=multi-user.target
