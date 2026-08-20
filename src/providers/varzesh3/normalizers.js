@@ -128,6 +128,131 @@ function validKickoffUtc(...values) {
   return null;
 }
 
+function normalizePersianDigits(value) {
+  return String(value ?? '')
+    .replace(/[۰-۹]/g, (digit) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(digit)))
+    .replace(/[٠-٩]/g, (digit) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(digit)));
+}
+
+function jalaliToGregorian(year, month, day) {
+  let jy = year - 979;
+  let jm = month - 1;
+  let jd = day - 1;
+
+  let jDayNo =
+    365 * jy +
+    Math.floor(jy / 33) * 8 +
+    Math.floor(((jy % 33) + 3) / 4);
+
+  for (let i = 0; i < jm; i += 1) {
+    jDayNo += i < 6 ? 31 : 30;
+  }
+  jDayNo += jd;
+
+  let gDayNo = jDayNo + 79;
+
+  let gy = 1600 + 400 * Math.floor(gDayNo / 146097);
+  gDayNo %= 146097;
+
+  let leap = true;
+  if (gDayNo >= 36525) {
+    gDayNo -= 1;
+    gy += 100 * Math.floor(gDayNo / 36524);
+    gDayNo %= 36524;
+
+    if (gDayNo >= 365) {
+      gDayNo += 1;
+    } else {
+      leap = false;
+    }
+  }
+
+  gy += 4 * Math.floor(gDayNo / 1461);
+  gDayNo %= 1461;
+
+  if (gDayNo >= 366) {
+    leap = false;
+    gDayNo -= 1;
+    gy += Math.floor(gDayNo / 365);
+    gDayNo %= 365;
+  }
+
+  const monthDays = [
+    31,
+    leap ? 29 : 28,
+    31,
+    30,
+    31,
+    30,
+    31,
+    31,
+    30,
+    31,
+    30,
+    31
+  ];
+
+  let gm = 0;
+  while (gm < monthDays.length && gDayNo >= monthDays[gm]) {
+    gDayNo -= monthDays[gm];
+    gm += 1;
+  }
+
+  return {
+    year: gy,
+    month: gm + 1,
+    day: gDayNo + 1
+  };
+}
+
+function persianDateTimeToUtc(dateFa, timeIran) {
+  const normalizedDate = normalizePersianDigits(dateFa).trim();
+  const normalizedTime = normalizePersianDigits(timeIran).trim();
+
+  const dateMatch = normalizedDate.match(/^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/);
+  const timeMatch = normalizedTime.match(/^(\d{1,2}):(\d{2})$/);
+
+  if (!dateMatch || !timeMatch) {
+    return null;
+  }
+
+  const jy = Number(dateMatch[1]);
+  const jm = Number(dateMatch[2]);
+  const jd = Number(dateMatch[3]);
+  const hour = Number(timeMatch[1]);
+  const minute = Number(timeMatch[2]);
+
+  if (
+    jy < 1200 ||
+    jy > 1700 ||
+    jm < 1 ||
+    jm > 12 ||
+    jd < 1 ||
+    jd > 31 ||
+    hour < 0 ||
+    hour > 23 ||
+    minute < 0 ||
+    minute > 59
+  ) {
+    return null;
+  }
+
+  const gregorian = jalaliToGregorian(jy, jm, jd);
+
+  // Iran currently uses UTC+03:30 year-round. Construct local Tehran time,
+  // then subtract the offset to produce UTC.
+  const timestamp = Date.UTC(
+    gregorian.year,
+    gregorian.month - 1,
+    gregorian.day,
+    hour,
+    minute
+  ) - (3 * 60 + 30) * 60 * 1000;
+
+  const date = new Date(timestamp);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
 function scoreValue(match, side) {
   const team = side === 'home' ? match?.host : match?.guest;
   const providerSide = side === 'home' ? 'host' : 'guest';
@@ -183,7 +308,9 @@ function normalizeMatch(entry, context, identityMaps) {
   const warnings = [];
   const externalHomeId = resolveTeamIdentity(match?.host, identityMaps);
   const externalAwayId = resolveTeamIdentity(match?.guest, identityMaps);
-  const kickoffUtc = validKickoffUtc(match?.utcTime, entry.date?.utcTime);
+  const kickoffUtc =
+    validKickoffUtc(match?.utcTime, entry.date?.utcTime) ||
+    persianDateTimeToUtc(entry.date?.date, match?.time);
 
   if (!externalHomeId) {
     warnings.push('home_team_identity_unresolved');
@@ -950,5 +1077,6 @@ module.exports = {
   scoreValue,
   resolveEventTeam,
   teamIdFromLink,
-  validKickoffUtc
+  validKickoffUtc,
+  persianDateTimeToUtc
 };

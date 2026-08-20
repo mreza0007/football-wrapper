@@ -105,7 +105,10 @@ test('matches endpoint returns only normalized public data', async () => {
   assert.equal(result.body.count, 2);
   assert.equal(result.body.matches[0].provider, 'varzesh3');
   assert.equal(result.body.matches[0].home_name_en, null);
-  assert.equal(result.body.matches[0].kickoff_utc, null);
+  assert.equal(
+    result.body.matches[0].kickoff_utc,
+    '2026-08-01T14:30:00.000Z'
+  );
   assert.equal(result.body.matches[1].home_score, 0);
   assertNoPrivateMapping(result.body);
 });

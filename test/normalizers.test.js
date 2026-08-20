@@ -11,7 +11,8 @@ const {
   normalizeStatus,
   scoreValue,
   teamIdFromLink,
-  validKickoffUtc
+  validKickoffUtc,
+  persianDateTimeToUtc
 } = require('../src/providers/varzesh3/normalizers');
 
 function entry(overrides = {}) {
@@ -61,6 +62,29 @@ test('UTC sentinel is rejected while genuine UTC is normalized', () => {
   assert.equal(validKickoffUtc('2026-08-10T18:30:00'), null);
 });
 
+test('Persian date and Iran time are converted to UTC fallback', () => {
+  assert.equal(
+    persianDateTimeToUtc('۱۴۰۵/۰۵/۱۰', '18:30'),
+    '2026-08-01T15:00:00.000Z'
+  );
+  assert.equal(persianDateTimeToUtc('invalid', '18:30'), null);
+  assert.equal(persianDateTimeToUtc('۱۴۰۵/۰۵/۱۰', '99:30'), null);
+});
+
+test('normalized match uses Persian kickoff fallback when provider UTC is unusable', () => {
+  const match = normalizeMatch(
+    entry(),
+    {
+      competitionKey: 'premier_league',
+      seasonKey: '2026-2027'
+    },
+    emptyMaps()
+  );
+
+  assert.equal(match.kickoff_utc, '2026-08-01T15:00:00.000Z');
+  assert.equal(match.warnings.includes('kickoff_utc_unresolved'), false);
+});
+
 test('team identity is parsed from a provider team link', () => {
   assert.equal(teamIdFromLink('/football/team/87/arsenal'), 87);
 });
@@ -89,7 +113,7 @@ test('unresolved team identity stays null and adds an explicit warning', () => {
   assert.equal(match.home_team_id, null);
   assert.equal(match.home_external_team_id, null);
   assert.ok(match.warnings.includes('home_team_identity_unresolved'));
-  assert.ok(match.warnings.includes('kickoff_utc_unresolved'));
+  assert.equal(match.warnings.includes('kickoff_utc_unresolved'), false);
 });
 
 test('identity is recovered from another match before standings', () => {

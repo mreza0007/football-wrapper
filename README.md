@@ -159,7 +159,7 @@ The events endpoint uses the same stable match lookup and confirmed Varzesh3 `ev
 
 Match pagination follows only provider `next` and `prev` links on the configured origin and expected league/season path. It does not assume page sizes or skip increments and stops after at most 50 fetched pages.
 
-`kickoff_utc` remains `null` when the season feed does not provide a genuinely valid UTC timestamp. The original Persian date and Iran time are preserved, and the match includes a `kickoff_utc_unresolved` warning.
+`kickoff_utc` uses a valid provider UTC timestamp when available. If the provider UTC value is missing or invalid, the wrapper derives UTC from the preserved Persian date and Iran local time. When neither source can produce a valid kickoff timestamp, `kickoff_utc` remains `null` and the match includes a `kickoff_utc_unresolved` warning.
 
 `npm run probe:varzesh3` is the manual online provider check. It prints counts and one normalized sample of each resource, never the full provider payload. The regular test suite mocks `fetch` and stays offline.
 
