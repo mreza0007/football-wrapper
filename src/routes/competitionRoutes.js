@@ -108,6 +108,10 @@ router.get('/:competitionKey/seasons/:seasonKey/standings', async (req, res) => 
     return res.status(404).json({ ok: false, error: 'Season not found' });
   }
 
+  if (season.capabilities?.supports_standings !== true) {
+    return res.status(501).json({ ok: false, error: 'Standings not supported' });
+  }
+
   const standings = await competitionDataService.getStandings(
     competition.competition_key,
     season.season_key

@@ -23,11 +23,11 @@ test('GET /health returns service health', async () => {
   });
 });
 
-test('GET /competitions returns Premier League without provider IDs', async () => {
+test('GET /competitions returns all configured competitions without provider IDs', async () => {
   const response = await request(app).get('/competitions').expect(200);
 
   assert.equal(response.body.ok, true);
-  assert.equal(response.body.count, 1);
+  assert.equal(response.body.count, 8);
   assert.equal(response.body.competitions[0].name_en, 'Premier League');
   assertNoProviderIds(response.body);
 });
