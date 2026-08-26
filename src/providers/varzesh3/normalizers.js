@@ -83,7 +83,7 @@ function normalizeStatus(match) {
   }
 
   const rawStatus = numericValue(match?.status);
-  if (rawStatus === 1) {
+  if (rawStatus === 0 || rawStatus === 1) {
     return 'upcoming';
   }
   if ([2, 3, 4, 5, 6].includes(rawStatus)) {

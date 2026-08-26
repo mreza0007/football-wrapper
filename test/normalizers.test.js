@@ -36,6 +36,7 @@ function emptyMaps() {
 }
 
 test('raw match statuses and isLive are normalized', () => {
+  assert.equal(normalizeStatus({ status: 0 }), 'upcoming');
   assert.equal(normalizeStatus({ status: 1 }), 'upcoming');
   for (const status of [2, 3, 4, 5, 6]) {
     assert.equal(normalizeStatus({ status }), 'live');
@@ -83,6 +84,49 @@ test('normalized match uses Persian kickoff fallback when provider UTC is unusab
 
   assert.equal(match.kickoff_utc, '2026-08-01T15:00:00.000Z');
   assert.equal(match.warnings.includes('kickoff_utc_unresolved'), false);
+});
+
+test('Persian Gulf scheduled fixture uses Jalali date and Iran time when UTC is null', () => {
+  const raw = entry({ status: 0, utcTime: null });
+  raw.date = {
+    date: '۱۴۰۵/۰۶/۰۶',
+    utcTime: null
+  };
+
+  const match = normalizeMatch(
+    raw,
+    {
+      competitionKey: 'persian_gulf_pro_league',
+      seasonKey: '1405-1406'
+    },
+    emptyMaps()
+  );
+
+  assert.equal(match.status, 'upcoming');
+  assert.equal(match.kickoff_utc, '2026-08-28T15:00:00.000Z');
+  assert.equal(match.warnings.includes('kickoff_utc_unresolved'), false);
+});
+
+test('invalid or missing Iran time does not fabricate a kickoff', () => {
+  for (const time of ['not-a-time', null]) {
+    const raw = entry({ status: 0, utcTime: null, time });
+    raw.date = {
+      date: '۱۴۰۵/۰۶/۰۶',
+      utcTime: null
+    };
+
+    const match = normalizeMatch(
+      raw,
+      {
+        competitionKey: 'persian_gulf_pro_league',
+        seasonKey: '1405-1406'
+      },
+      emptyMaps()
+    );
+
+    assert.equal(match.kickoff_utc, null);
+    assert.equal(match.warnings.includes('kickoff_utc_unresolved'), true);
+  }
 });
 
 test('team identity is parsed from a provider team link', () => {
