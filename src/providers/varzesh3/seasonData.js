@@ -3,6 +3,9 @@
 const { getConfig, requestJson, ProviderRequestError } = require('./httpClient');
 
 const MAX_PAGES = 50;
+const DEFAULT_OVERVIEW_MAX_PAGES = 5;
+const OVERVIEW_UPCOMING_LIMIT = 5;
+const OVERVIEW_FINISHED_LIMIT = 5;
 
 class StandingsUnavailableError extends Error {
   constructor() {
@@ -51,6 +54,33 @@ function paginationLinks(page, leagueId, seasonId) {
         isAllowedPaginationUrl(href, leagueId, seasonId)
     )
     .map((href) => new URL(href, `${baseUrl}/`).href);
+}
+
+function overviewPaginationLink(page, relation, leagueId, seasonId) {
+  if (!Array.isArray(page?._links) || !['next', 'prev'].includes(relation)) {
+    return null;
+  }
+
+  const expectedResource = relation === 'next' ? 'fixtures' : 'results';
+  const { baseUrl } = getConfig();
+  const expectedSuffix = `${seasonPath(leagueId, seasonId)}/${expectedResource}`;
+
+  for (const link of page._links) {
+    if (
+      link?.rel !== relation ||
+      typeof link?.href !== 'string' ||
+      !isAllowedPaginationUrl(link.href, leagueId, seasonId)
+    ) {
+      continue;
+    }
+
+    const target = new URL(link.href, `${baseUrl}/`);
+    if (target.pathname.endsWith(expectedSuffix)) {
+      return target.href;
+    }
+  }
+
+  return null;
 }
 
 function flattenMatches(page) {
@@ -114,6 +144,115 @@ async function fetchSeasonMatches(leagueId, seasonId, options = {}) {
   };
 }
 
+function overviewCounts(entries) {
+  const {
+    normalizeStatus,
+    persianDateTimeToUtc,
+    validKickoffUtc
+  } = require('./normalizers');
+  let upcoming = 0;
+  let finished = 0;
+
+  for (const entry of entries) {
+    const status = normalizeStatus(entry.match);
+    if (status !== 'upcoming' && status !== 'finished') {
+      continue;
+    }
+    const kickoff =
+      validKickoffUtc(entry.match?.utcTime, entry.date?.utcTime) ||
+      persianDateTimeToUtc(entry.date?.date, entry.match?.time);
+    if (!kickoff) {
+      continue;
+    }
+    if (status === 'upcoming') {
+      upcoming += 1;
+    } else {
+      finished += 1;
+    }
+  }
+
+  return { upcoming, finished };
+}
+
+async function fetchSeasonOverviewMatches(leagueId, seasonId, options = {}) {
+  const request = options.requestJson || requestJson;
+  const requestedMaxPages = options.maxPages ?? DEFAULT_OVERVIEW_MAX_PAGES;
+  const maxPages = Math.max(
+    1,
+    Math.min(DEFAULT_OVERVIEW_MAX_PAGES, requestedMaxPages)
+  );
+  const matchesById = new Map();
+  const visited = new Set();
+  const links = { next: null, prev: null };
+
+  async function fetchPage(url, relation = null) {
+    if (!url || visited.has(url) || visited.size >= maxPages) {
+      return false;
+    }
+    visited.add(url);
+    const page = await request(url);
+    for (const entry of flattenMatches(page)) {
+      const externalId = entry.match?.id;
+      if (externalId === undefined || externalId === null) {
+        continue;
+      }
+      const key = String(externalId);
+      if (!matchesById.has(key)) {
+        matchesById.set(key, entry);
+      }
+    }
+
+    if (relation === null || relation === 'next') {
+      links.next = overviewPaginationLink(page, 'next', leagueId, seasonId);
+    }
+    if (relation === null || relation === 'prev') {
+      links.prev = overviewPaginationLink(page, 'prev', leagueId, seasonId);
+    }
+    return true;
+  }
+
+  await fetchPage(buildEndpoint(leagueId, seasonId, 'matches'));
+
+  while (visited.size < maxPages) {
+    const counts = overviewCounts([...matchesById.values()]);
+    const needsNext =
+      counts.upcoming < OVERVIEW_UPCOMING_LIMIT && Boolean(links.next);
+    const needsPrev =
+      counts.finished < OVERVIEW_FINISHED_LIMIT && Boolean(links.prev);
+    if (!needsNext && !needsPrev) {
+      break;
+    }
+
+    let fetched = false;
+    if (needsNext && visited.size < maxPages) {
+      const nextUrl = links.next;
+      links.next = null;
+      fetched = (await fetchPage(nextUrl, 'next')) || fetched;
+    }
+    const refreshedCounts = overviewCounts([...matchesById.values()]);
+    const stillNeedsPrev =
+      refreshedCounts.finished < OVERVIEW_FINISHED_LIMIT && Boolean(links.prev);
+    if (stillNeedsPrev && visited.size < maxPages) {
+      const prevUrl = links.prev;
+      links.prev = null;
+      fetched = (await fetchPage(prevUrl, 'prev')) || fetched;
+    }
+    if (!fetched) {
+      break;
+    }
+  }
+
+  const counts = overviewCounts([...matchesById.values()]);
+  return {
+    matches: [...matchesById.values()],
+    pagesFetched: visited.size,
+    pageLimitReached:
+      visited.size >= maxPages &&
+      ((counts.upcoming < OVERVIEW_UPCOMING_LIMIT && Boolean(links.next)) ||
+        (counts.finished < OVERVIEW_FINISHED_LIMIT && Boolean(links.prev)))
+  };
+}
+
 async function fetchSeasonStandings(leagueId, seasonId, options = {}) {
   const request = options.requestJson || requestJson;
   const url = buildEndpoint(leagueId, seasonId, 'standing');
@@ -136,11 +275,17 @@ async function fetchSeasonStandings(leagueId, seasonId, options = {}) {
 }
 
 module.exports = {
+  DEFAULT_OVERVIEW_MAX_PAGES,
   MAX_PAGES,
+  OVERVIEW_FINISHED_LIMIT,
+  OVERVIEW_UPCOMING_LIMIT,
   StandingsUnavailableError,
+  fetchSeasonOverviewMatches,
   fetchSeasonMatches,
   fetchSeasonStandings,
   flattenMatches,
   isAllowedPaginationUrl,
+  overviewCounts,
+  overviewPaginationLink,
   paginationLinks
 };

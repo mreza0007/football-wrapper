@@ -125,6 +125,7 @@ Deployment is isolated from the existing World Cup wrapper:
 - `GET /competitions/:competitionKey/seasons`
 - `GET /competitions/:competitionKey/seasons/:seasonKey`
 - `GET /competitions/:competitionKey/seasons/:seasonKey/matches`
+- `GET /competitions/:competitionKey/seasons/:seasonKey/overview`
 - `GET /competitions/:competitionKey/seasons/:seasonKey/standings`
 - `GET /competitions/:competitionKey/seasons/:seasonKey/teams`
 - `GET /matches/:matchId/live`
@@ -150,6 +151,8 @@ The events endpoint uses the same stable match lookup and confirmed Varzesh3 `ev
 - `VARZESH3_TIMEOUT_MS` defaults to `30000` milliseconds.
 - `VARZESH3_LIVESCORE_CACHE_TTL_MS` defaults to `10000` milliseconds.
 - `VARZESH3_SEASON_MATCHES_CACHE_TTL_MS` defaults to `30000` milliseconds.
+- `VARZESH3_OVERVIEW_CACHE_TTL_MS` defaults to `30000` milliseconds.
+- `VARZESH3_OVERVIEW_CACHE_MAX_ENTRIES` defaults to `100`.
 - `VARZESH3_STANDINGS_CACHE_TTL_MS` defaults to `30000` milliseconds.
 - `VARZESH3_SEASON_CACHE_MAX_ENTRIES` defaults to `100` total season-data entries.
 - `MATCH_INDEX_TTL_MS` defaults to `300000` milliseconds.
@@ -171,6 +174,12 @@ applied after the full season result is retrieved. Set either season-data TTL to
 `0` to disable reuse. The combined cache is bounded by
 `VARZESH3_SEASON_CACHE_MAX_ENTRIES` using least-recently-used eviction.
 
+
+Competition overviews use a separate process-local, competition-and-season scoped
+cache. The overview fetch starts with the provider's bounded current `matches`
+page and follows only provider-supplied `next` fixture or `prev` result links
+when a five-match category quota is not met. It fetches at most five pages,
+coalesces concurrent scope-identical requests, and does not serve stale entries.
 The match index, season-data cache, and today-livescore cache are process-local
 and are rebuilt after restarts. They are not shared across server processes.
 After a completely successful configured-season index refresh, unknown stable
