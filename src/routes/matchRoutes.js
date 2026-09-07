@@ -3,8 +3,13 @@
 const express = require('express');
 const liveMatchService = require('../services/liveMatchService');
 const matchEventService = require('../services/matchEventService');
+const dailyMatchService = require('../services/dailyMatchService');
 
 const router = express.Router();
+
+router.get('/by-date', async (req, res) => {
+  return res.json(await dailyMatchService.getMatchesByDate(req.query.date));
+});
 
 router.get('/:matchId/live', async (req, res) => {
   const result = await liveMatchService.getLiveMatch(req.params.matchId);

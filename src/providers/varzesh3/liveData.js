@@ -1,6 +1,6 @@
 'use strict';
 
-const { getConfig, requestJson } = require('./httpClient');
+const { getConfig, requestJson, ProviderRequestError } = require('./httpClient');
 
 const DEFAULT_LIVESCORE_CACHE_TTL_MS = 10000;
 
@@ -49,7 +49,9 @@ function flattenTodayLivescore(root) {
         }
         matchesById.set(id, {
           ...match,
-          date: match.date ?? date?.date ?? null
+          date: match.date ?? date?.date ?? null,
+          provider_league_id: league.id,
+          provider_sport: league.sport
         });
       }
     }
@@ -59,9 +61,25 @@ function flattenTodayLivescore(root) {
 }
 
 async function fetchTodayLivescore(options = {}) {
+  return fetchLivescoreByOffset(0, options);
+}
+
+function offsetPath(offset) {
+  if (!Number.isInteger(offset) || offset < -2 || offset > 2) {
+    throw new RangeError('Unsupported livescore offset');
+  }
+  return offset === 0 ? 'today' : String(offset);
+}
+
+async function fetchLivescoreByOffset(offset, options = {}) {
+  const path = offsetPath(offset);
   const request = options.requestJson || requestJson;
   const { baseUrl } = getConfig();
-  const root = await request(`${baseUrl}/livescore/today`);
+  const root = await request(`${baseUrl}/livescore/${path}`);
+  if (!Array.isArray(root) && ![root?.leagues, root?.items, root?.data,
+    root?.data?.leagues, root?.data?.items].some(Array.isArray)) {
+    throw new ProviderRequestError('invalid_json');
+  }
   return flattenTodayLivescore(root);
 }
 
@@ -127,14 +145,46 @@ function createLivescoreCache(options = {}) {
   return { clear, get, peek };
 }
 
-const defaultCache = createLivescoreCache();
+function createOffsetLivescoreCache(options = {}) {
+  const now = options.now || Date.now;
+  const fetchMatches = options.fetchMatches || fetchLivescoreByOffset;
+  const caches = new Map();
+  const dayFormat = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Tehran', year: 'numeric', month: '2-digit', day: '2-digit'
+  });
+  let day = null;
+  function clear() {
+    for (const cache of caches.values()) cache.clear();
+    caches.clear();
+  }
+  function get(offset = 0) {
+    offsetPath(offset);
+    const currentDay = dayFormat.format(new Date(now()));
+    if (currentDay !== day) {
+      clear();
+      day = currentDay;
+    }
+    if (!caches.has(offset)) {
+      caches.set(offset, createLivescoreCache({
+        ...options, now, fetchMatches: () => fetchMatches(offset)
+      }));
+    }
+    return caches.get(offset).get();
+  }
+  return { get, clear };
+}
+
+const defaultCache = createOffsetLivescoreCache();
 
 module.exports = {
   DEFAULT_LIVESCORE_CACHE_TTL_MS,
   clearLivescoreCache: defaultCache.clear,
   createLivescoreCache,
+  createOffsetLivescoreCache,
+  fetchLivescoreByOffset,
+  getLivescoreByOffset: defaultCache.get,
   fetchTodayLivescore,
   flattenTodayLivescore,
-  getTodayLivescore: defaultCache.get,
+  getTodayLivescore: () => defaultCache.get(0),
   normalizeProviderMatchId
 };

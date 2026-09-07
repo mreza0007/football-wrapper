@@ -162,6 +162,36 @@ The events endpoint uses the same stable match lookup and confirmed Varzesh3 `ev
 
 Match pagination follows only provider `next` and `prev` links on the configured origin and expected league/season path. It does not assume page sizes or skip increments and stops after at most 50 fetched pages.
 
+### Nearby daily matches
+
+`GET /matches/by-date?date=YYYY-MM-DD` returns `{ date, groups, errors }`.
+Each group contains `competition: { key, name, name_fa, season_key, type }`
+and canonical normalized `matches`, ordered by registry order and kickoff/ID.
+Only active configured football competitions with an unambiguous mapped league
+and active default season are included. The feed has no season identifier, so
+season assignment uses configuration, not provider display text.
+
+Supported dates are the current **Asia/Tehran** calendar date plus offsets
+-2, -1, 0, +1, +2. These map internally to the provider's verified
+`/livescore/-2`, `/livescore/-1`, `/livescore/today`, `/livescore/1`,
+and `/livescore/2`. Inclusion requires a valid timezone-aware `startOnUtc`
+whose Tehran date matches the request. Provider display dates are not used
+for inclusion. Unsupported leagues, malformed rows, unresolved kickoffs,
+and unsupported statuses are skipped. There is no five-match quota.
+
+Invalid dates and dates outside this window return 400. Provider failures,
+malformed feed roots, and requests crossing Tehran midnight return a sanitized
+502; retry midnight failures with the current calendar date. A successful
+empty feed returns 200 with empty groups/errors. No full-season or overview
+fallback is used, and daily reads do not replace the season match index.
+
+Offset feeds share the existing livescore cache implementation: 10 seconds
+by default (`VARZESH3_LIVESCORE_CACHE_TTL_MS`), at most five offset entries,
+same-offset request coalescing, defensive copies, and no expired-data fallback.
+Offset zero is shared with live-match retrieval. All offsets are invalidated
+when the Tehran calendar day changes. Coverage is limited to matches supplied
+by the verified daily feed; this is not an arbitrary historical date API.
+
 `kickoff_utc` uses a valid provider UTC timestamp when available. If the provider UTC value is missing or invalid, the wrapper derives UTC from the preserved Persian date and Iran local time. When neither source can produce a valid kickoff timestamp, `kickoff_utc` remains `null` and the match includes a `kickoff_utc_unresolved` warning.
 
 `npm run probe:varzesh3` is the manual online provider check. It prints counts and one normalized sample of each resource, never the full provider payload. The regular test suite mocks `fetch` and stays offline.
