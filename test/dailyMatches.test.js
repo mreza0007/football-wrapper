@@ -114,6 +114,18 @@ test('unsupported statuses and malformed identities are skipped; finished/live f
   assert.equal(result.groups[0].matches.find(m => m.status === 'live').is_live, true);
 });
 
+test('daily feed retains postponed matches with all playing-state booleans false', async t => {
+  t.mock.method(provider, 'getLivescoreByOffset', async () => [{
+    ...record(486074), status: 4, statusTitle: 'تعویق', isLive: false, liveTime: ''
+  }]);
+  const result = await service.getMatchesByDate('2026-09-07', { now });
+  const match = result.groups[0].matches[0];
+  assert.equal(match.status, 'postponed');
+  assert.equal(match.is_live, false);
+  assert.equal(match.is_finished, false);
+  assert.equal(match.is_upcoming, false);
+});
+
 test('ambiguous league mapping is excluded', async t => {
   const original = provider.getCompetitionMapping;
   t.mock.method(provider, 'getCompetitionMapping', key => ({

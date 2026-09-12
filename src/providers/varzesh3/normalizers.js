@@ -78,6 +78,22 @@ function resolveTeamIdentity(team, identityMaps) {
 }
 
 function normalizeStatus(match) {
+  const title = String(match?.statusTitle || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ');
+  if (/^(?:postponed(?: match)?|match postponed|تعویق(?: بازی| مسابقه)?)$/u.test(title)) {
+    return 'postponed';
+  }
+  if (
+    /finished|full.?time|پایان بازی|پایان مسابقه|اتمام بازی|پایان ضربات پنالتی/.test(
+      title
+    )
+  ) {
+    return 'finished';
+  }
+
   if (match?.isLive === true) {
     return 'live';
   }
@@ -93,14 +109,6 @@ function normalizeStatus(match) {
     return 'finished';
   }
 
-  const title = String(match?.statusTitle || '').trim().toLowerCase();
-  if (
-    /finished|full.?time|پایان بازی|پایان مسابقه|اتمام بازی|پایان ضربات پنالتی/.test(
-      title
-    )
-  ) {
-    return 'finished';
-  }
   if (/live|زنده|در حال|نیمه|وقت اضافه|پنالتی|\bbreak\b|وقفه/.test(title)) {
     return 'live';
   }

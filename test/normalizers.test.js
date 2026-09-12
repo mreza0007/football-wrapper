@@ -52,6 +52,22 @@ test('raw match statuses and isLive are normalized', () => {
   assert.equal(normalizeStatus({ status: 99 }), null);
 });
 
+test('explicit postponed title takes precedence over numeric and isLive inference', () => {
+  assert.equal(
+    normalizeStatus({ status: 4, statusTitle: 'تعویق', isLive: false }),
+    'postponed'
+  );
+  assert.equal(
+    normalizeStatus({ status: 4, statusTitle: ' Postponed Match ', isLive: false }),
+    'postponed'
+  );
+  assert.equal(
+    normalizeStatus({ status: 4, statusTitle: 'تعویق', isLive: true }),
+    'postponed'
+  );
+  assert.equal(normalizeStatus({ status: 4 }), 'live');
+});
+
 test('numeric score zero is preserved and missing scores are null', () => {
   assert.equal(scoreValue({ goals: { host: 0 } }, 'home'), 0);
   assert.equal(scoreValue({}, 'home'), null);

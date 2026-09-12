@@ -8,7 +8,7 @@ const app = require('../src/app');
 const stableId = require('../src/utils/stableId');
 const varzesh3 = require('../src/providers/varzesh3');
 const matchLocatorService = require('../src/services/matchLocatorService');
-const { matchesExternalId } = require('../src/services/liveMatchService');
+const { getLiveMatch, matchesExternalId } = require('../src/services/liveMatchService');
 
 const originalFetch = globalThis.fetch;
 const originalGetTodayLivescore = varzesh3.getTodayLivescore;
@@ -192,6 +192,24 @@ test('absent today live record returns a non-stale season snapshot warning', asy
       'live_record_not_found_using_season_snapshot'
     )
   );
+});
+
+test('postponed livescore record is excluded from live-only detection', async () => {
+  const postponed = livescoreRoot();
+  Object.assign(postponed[0].dates[0].matches[0], {
+    status: 4,
+    statusTitle: 'تعویق',
+    isLive: false,
+    liveTime: ''
+  });
+  globalThis.fetch = providerFetch(postponed);
+  const matchId = stableId('match', 'varzesh3', 101);
+
+  const result = await getLiveMatch(matchId);
+
+  assert.equal(result.match.status, 'postponed');
+  assert.equal(result.match.is_live, false);
+  assert.equal(result.todayLiveMatchCount, 0);
 });
 
 test('livescore provider failure returns a stale resolved season snapshot', async () => {
