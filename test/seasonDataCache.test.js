@@ -24,6 +24,10 @@ function deferred() {
   return { promise, reject, resolve };
 }
 
+function settleBackgroundWork() {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 test('season cache configuration uses documented defaults and safe fallbacks', () => {
   assert.deepEqual(seasonCacheConfig({}), {
     matchesTtlMs: DEFAULT_SEASON_MATCHES_CACHE_TTL_MS,
@@ -156,13 +160,20 @@ test('concurrent standings callers share one in-flight provider request', async 
   assert.equal(calls, 1);
 });
 
-test('cache TTL expiry triggers one shared refresh', async () => {
+test('expired matches return stale immediately and share one background refresh', async () => {
   let currentTime = 0;
   let calls = 0;
+  const refreshGate = deferred();
   const cache = createSeasonDataCache({
     now: () => currentTime,
     matchesTtlMs: 100,
-    fetchMatches: async () => ({ matches: [++calls] })
+    fetchMatches: async () => {
+      calls += 1;
+      if (calls === 1) {
+        return { matches: [1] };
+      }
+      return refreshGate.promise;
+    }
   });
 
   await cache.getMatches('varzesh3', 3, 10);
@@ -173,8 +184,17 @@ test('cache TTL expiry triggers one shared refresh', async () => {
   ]);
 
   assert.equal(calls, 2);
-  assert.deepEqual(first, { matches: [2] });
+  assert.deepEqual(first, { matches: [1] });
   assert.deepEqual(second, first);
+
+  refreshGate.resolve({ matches: [2] });
+  await settleBackgroundWork();
+
+  assert.deepEqual(
+    await cache.getMatches('varzesh3', 3, 10),
+    { matches: [2] }
+  );
+  assert.equal(calls, 2);
 });
 
 test('TTL zero disables reuse', async () => {
@@ -212,33 +232,110 @@ test('valid empty matches and standings are cached', async () => {
   assert.equal(standingCalls, 1);
 });
 
-test('failed refresh preserves but does not serve expired cached data', async () => {
+test('failed background refresh preserves stale data and permits retry', async () => {
   let currentTime = 0;
-  let shouldFail = false;
+  let calls = 0;
+  const failedRefresh = deferred();
+  const retryRefresh = deferred();
   const cachedValue = { matches: [{ match: { id: 101 } }] };
   const cache = createSeasonDataCache({
     now: () => currentTime,
     matchesTtlMs: 100,
     fetchMatches: async () => {
-      if (shouldFail) {
-        throw new ProviderRequestError('network');
+      calls += 1;
+      if (calls === 1) {
+        return cachedValue;
       }
-      return cachedValue;
+      if (calls === 2) {
+        return failedRefresh.promise;
+      }
+      return retryRefresh.promise;
     }
   });
 
   await cache.getMatches('varzesh3', 3, 10);
   currentTime = 101;
-  shouldFail = true;
-  await assert.rejects(
-    cache.getMatches('varzesh3', 3, 10),
-    ProviderRequestError
+  assert.deepEqual(
+    await cache.getMatches('varzesh3', 3, 10),
+    cachedValue
   );
+  failedRefresh.reject(new ProviderRequestError('network'));
+  await settleBackgroundWork();
+
   assert.deepEqual(cache.peek('matches', 'varzesh3', 3, 10), cachedValue);
+  assert.deepEqual(
+    await cache.getMatches('varzesh3', 3, 10),
+    cachedValue
+  );
+  assert.equal(calls, 3);
+
+  retryRefresh.resolve({ matches: [{ match: { id: 102 } }] });
+  await settleBackgroundWork();
+  assert.deepEqual(cache.peek('matches', 'varzesh3', 3, 10), {
+    matches: [{ match: { id: 102 } }]
+  });
+});
+
+test('cold matches failure still propagates and a later caller can retry', async () => {
+  let calls = 0;
+  const cache = createSeasonDataCache({
+    fetchMatches: async () => {
+      calls += 1;
+      if (calls === 1) {
+        throw new ProviderRequestError('network');
+      }
+      return { matches: [] };
+    }
+  });
+
   await assert.rejects(
-    cache.getMatches('varzesh3', 3, 10),
+    Promise.all([
+      cache.getMatches('varzesh3', 3, 10),
+      cache.getMatches('varzesh3', 3, 10)
+    ]),
     ProviderRequestError
   );
+  assert.equal(calls, 1);
+  assert.deepEqual(
+    await cache.getMatches('varzesh3', 3, 10),
+    { matches: [] }
+  );
+  assert.equal(calls, 2);
+});
+
+test('expired standings still block on one shared refresh', async () => {
+  let currentTime = 0;
+  let calls = 0;
+  const refreshGate = deferred();
+  const cache = createSeasonDataCache({
+    now: () => currentTime,
+    standingsTtlMs: 100,
+    fetchStandings: async () => {
+      calls += 1;
+      if (calls === 1) {
+        return { teams: [1] };
+      }
+      return refreshGate.promise;
+    }
+  });
+
+  await cache.getStandings('varzesh3', 3, 10);
+  currentTime = 101;
+  let settled = false;
+  const first = cache.getStandings('varzesh3', 3, 10)
+    .then((value) => {
+      settled = true;
+      return value;
+    });
+  const second = cache.getStandings('varzesh3', 3, 10);
+  await settleBackgroundWork();
+
+  assert.equal(calls, 2);
+  assert.equal(settled, false);
+
+  refreshGate.resolve({ teams: [2] });
+  assert.deepEqual(await first, { teams: [2] });
+  assert.deepEqual(await second, { teams: [2] });
 });
 
 test('caller mutation cannot mutate cached or sibling data', async () => {

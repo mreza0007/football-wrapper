@@ -86,17 +86,7 @@ function createSeasonDataCache(options = {}) {
     }
   }
 
-  async function get(dataType, provider, leagueId, seasonId, fetcher) {
-    const key = normalizedCacheKey(provider, dataType, leagueId, seasonId);
-    const existing = entries.get(key);
-    if (existing && now() < existing.expiresAt) {
-      touch(key, existing);
-      return structuredClone(existing.value);
-    }
-    if (inFlight.has(key)) {
-      return structuredClone(await inFlight.get(key));
-    }
-
+  function startRefresh(key, dataType, leagueId, seasonId, fetcher) {
     const refreshGeneration = generation;
     const ttlMs = dataType === 'matches' ? matchesTtlMs : standingsTtlMs;
     const refresh = (async () => {
@@ -112,14 +102,46 @@ function createSeasonDataCache(options = {}) {
       return snapshot;
     })();
     inFlight.set(key, refresh);
-
-    try {
-      return structuredClone(await refresh);
-    } finally {
-      if (inFlight.get(key) === refresh) {
-        inFlight.delete(key);
+    refresh.then(
+      () => {
+        if (inFlight.get(key) === refresh) {
+          inFlight.delete(key);
+        }
+      },
+      () => {
+        if (inFlight.get(key) === refresh) {
+          inFlight.delete(key);
+        }
       }
+    );
+    return refresh;
+  }
+
+  async function get(dataType, provider, leagueId, seasonId, fetcher) {
+    const key = normalizedCacheKey(provider, dataType, leagueId, seasonId);
+    const existing = entries.get(key);
+    if (existing && now() < existing.expiresAt) {
+      touch(key, existing);
+      return structuredClone(existing.value);
     }
+    if (existing && dataType === 'matches') {
+      touch(key, existing);
+      if (!inFlight.has(key)) {
+        startRefresh(key, dataType, leagueId, seasonId, fetcher);
+      }
+      return structuredClone(existing.value);
+    }
+    if (inFlight.has(key)) {
+      return structuredClone(await inFlight.get(key));
+    }
+
+    return structuredClone(await startRefresh(
+      key,
+      dataType,
+      leagueId,
+      seasonId,
+      fetcher
+    ));
   }
 
   function getMatches(provider, leagueId, seasonId, fetcher = fetchMatches) {
