@@ -229,7 +229,8 @@ test('an injected app avoids loading the default app', async () => {
     },
     logger,
     processRef,
-    loadEnvironment: false
+    loadEnvironment: false,
+    prewarmSeasonMatches: false
   });
 
   assert.equal(defaultAppLoaded, false);

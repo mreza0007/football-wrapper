@@ -63,7 +63,8 @@ test('environment loading occurs before the default app loader', () => {
           return app;
         },
         logger,
-        processRef
+        processRef,
+        prewarmSeasonMatches: false
       });
       if (order.join(',') !== 'environment,app') {
         throw new Error('wrong startup order: ' + order.join(','));

@@ -43,7 +43,31 @@ async function startProductionServer(options = {}) {
       clearTimeoutFn: options.clearTimeoutFn
     });
     lifecycle.registerProcessHandlers();
-    await lifecycle.start();
+    const server = await lifecycle.start();
+    if (server && options.prewarmSeasonMatches !== false) {
+      const schedulePrewarm = options.schedulePrewarm || setImmediate;
+      const prewarmSeasonMatches =
+        options.prewarmSeasonMatches ||
+        require('./services/seasonPrewarmService').prewarmActiveSeasonMatches;
+      const reportPrewarmFailure = (error) => {
+        const fields = { error_name: safeErrorName(error) };
+        if (typeof logger.warn === 'function') {
+          logger.warn('season_matches_prewarm_failed', fields);
+        } else {
+          logger.error('season_matches_prewarm_failed', fields);
+        }
+      };
+
+      try {
+        schedulePrewarm(() => {
+          void Promise.resolve()
+            .then(() => prewarmSeasonMatches({ logger }))
+            .catch(reportPrewarmFailure);
+        });
+      } catch (error) {
+        reportPrewarmFailure(error);
+      }
+    }
     return lifecycle;
   } catch (error) {
     processRef.exitCode = 1;

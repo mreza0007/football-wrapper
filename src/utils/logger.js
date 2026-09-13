@@ -2,14 +2,21 @@
 
 const SAFE_FIELD_NAMES = new Set([
   'error_name',
+  'competition_key',
+  'concurrency',
+  'duration_ms',
+  'failed',
   'host',
   'method',
   'path',
   'port',
   'setting',
   'signal',
+  'scope_count',
+  'season_key',
   'source',
   'status',
+  'succeeded',
   'timeout_ms'
 ]);
 
@@ -67,6 +74,9 @@ function createLogger(options = {}) {
   return {
     info(event, fields) {
       write('INFO', event, fields);
+    },
+    warn(event, fields) {
+      write('WARN', event, fields);
     },
     error(event, fields) {
       write('ERROR', event, fields);
