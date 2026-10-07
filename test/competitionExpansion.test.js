@@ -14,7 +14,11 @@ const expectedScopes = [
   ['bundesliga', '2026-2027', 1, 902055, true],
   ['ligue_1', '2026-2027', 5, 902039, true],
   ['champions_league', '2026-2027', 25, 902063, false],
-  ['europa_league', '2026-2027', 29, 902064, false]
+  ['europa_league', '2026-2027', 29, 902064, false],
+  ['uefa_nations_league_a', '2026-2027', 318, 902017, false],
+  ['uefa_nations_league_b', '2026-2027', 319, 902019, false],
+  ['uefa_nations_league_c', '2026-2027', 320, 902020, false],
+  ['uefa_nations_league_d', '2026-2027', 321, 902021, false]
 ];
 
 test('competition directory exposes all required active scopes', async () => {
@@ -68,5 +72,21 @@ test('tournament standings capability is rejected without a provider request', a
     assert.equal(providerCalled, false);
   } finally {
     varzesh3.getSeasonStandings = original;
+  }
+});
+
+test('Nations League divisions expose honest generic capabilities', async () => {
+  const response = await request(app).get('/competitions').expect(200);
+  const competitions = new Map(
+    response.body.competitions.map((competition) => [competition.competition_key, competition])
+  );
+  for (const division of ['a', 'b', 'c', 'd']) {
+    const competition = competitions.get(`uefa_nations_league_${division}`);
+    assert.equal(competition.type, 'international');
+    assert.equal(competition.capabilities.supports_matches, true);
+    assert.equal(competition.capabilities.supports_teams, true);
+    assert.equal(competition.capabilities.supports_live, true);
+    assert.equal(competition.capabilities.supports_events, true);
+    assert.equal(competition.capabilities.supports_standings, false);
   }
 });

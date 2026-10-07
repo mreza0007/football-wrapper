@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const request = require('supertest');
 
 const app = require('../src/app');
+const { competitions } = require('../src/config/competitionRegistry');
 const stableId = require('../src/utils/stableId');
 const varzesh3 = require('../src/providers/varzesh3');
 const matchLocatorService = require('../src/services/matchLocatorService');
@@ -88,9 +89,9 @@ test('stable match resolves before event request and returns normalized public e
     .get(`/matches/${matchId}/events`)
     .expect(200);
 
-  assert.equal(calls.length, 9);
+  assert.equal(calls.length, competitions.length + 1);
   assert.match(calls[0], /\/seasons\/902037\/matches$/);
-  assert.match(calls[8], /\/matches\/101\/events$/);
+  assert.match(calls.at(-1), /\/matches\/101\/events$/);
   assert.equal(result.body.ok, true);
   assert.equal(result.body.match_id, matchId);
   assert.equal(result.body.external_match_id, 101);
@@ -131,7 +132,7 @@ test('provider failure during index refresh returns 502 before event retrieval',
     .get(`/matches/${matchId}/events`)
     .expect(502);
   assert.deepEqual(result.body, { ok: false, error: 'Provider unavailable' });
-  assert.equal(calls, 8);
+  assert.equal(calls, competitions.length);
 });
 
 test('structurally valid empty events return a non-stale empty success', async () => {

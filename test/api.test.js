@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const request = require('supertest');
 
 const app = require('../src/app');
+const { competitions } = require('../src/config/competitionRegistry');
 const varzesh3 = require('../src/providers/varzesh3');
 
 function assertNoProviderIds(value) {
@@ -27,7 +28,7 @@ test('GET /competitions returns all configured competitions without provider IDs
   const response = await request(app).get('/competitions').expect(200);
 
   assert.equal(response.body.ok, true);
-  assert.equal(response.body.count, 8);
+  assert.equal(response.body.count, competitions.length);
   assert.equal(response.body.competitions[0].name_en, 'Premier League');
   assertNoProviderIds(response.body);
 });

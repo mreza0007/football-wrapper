@@ -18,7 +18,11 @@ const competitionDefinitions = [
   ['bundesliga', 'بوندس‌لیگا', 'Bundesliga', 'domestic_league', '2026-2027', true],
   ['ligue_1', 'لیگ ۱ فرانسه', 'Ligue 1', 'domestic_league', '2026-2027', true],
   ['champions_league', 'لیگ قهرمانان اروپا', 'UEFA Champions League', 'continental_club_competition', '2026-2027', false],
-  ['europa_league', 'لیگ اروپا', 'UEFA Europa League', 'continental_club_competition', '2026-2027', false]
+  ['europa_league', 'لیگ اروپا', 'UEFA Europa League', 'continental_club_competition', '2026-2027', false],
+  ['uefa_nations_league_a', 'لیگ ملت‌های اروپا (A)', 'UEFA Nations League A', 'international', '2026-2027', false],
+  ['uefa_nations_league_b', 'لیگ ملت‌های اروپا (B)', 'UEFA Nations League B', 'international', '2026-2027', false],
+  ['uefa_nations_league_c', 'لیگ ملت‌های اروپا (C)', 'UEFA Nations League C', 'international', '2026-2027', false],
+  ['uefa_nations_league_d', 'لیگ ملت‌های اروپا (D)', 'UEFA Nations League D', 'international', '2026-2027', false]
 ];
 
 const competitions = competitionDefinitions.map(

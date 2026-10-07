@@ -36,5 +36,21 @@ module.exports = {
   europa_league: {
     provider_league_id: 29,
     seasons: { '2026-2027': { provider_season_id: 902064 } }
+  },
+  uefa_nations_league_a: {
+    provider_league_id: 318,
+    seasons: { '2026-2027': { provider_season_id: 902017 } }
+  },
+  uefa_nations_league_b: {
+    provider_league_id: 319,
+    seasons: { '2026-2027': { provider_season_id: 902019 } }
+  },
+  uefa_nations_league_c: {
+    provider_league_id: 320,
+    seasons: { '2026-2027': { provider_season_id: 902020 } }
+  },
+  uefa_nations_league_d: {
+    provider_league_id: 321,
+    seasons: { '2026-2027': { provider_season_id: 902021 } }
   }
 };

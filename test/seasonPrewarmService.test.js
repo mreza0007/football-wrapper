@@ -93,9 +93,13 @@ test('configured active competition seasons are discovered from mappings', () =>
     'ligue_1',
     'persian_gulf_pro_league',
     'premier_league',
-    'serie_a'
+    'serie_a',
+    'uefa_nations_league_a',
+    'uefa_nations_league_b',
+    'uefa_nations_league_c',
+    'uefa_nations_league_d'
   ]);
-  assert.equal(scopes.length, 8);
+  assert.equal(scopes.length, 12);
   assert.equal(competitionKeys.includes('worldcup2026'), false);
 });
 

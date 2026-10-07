@@ -77,14 +77,39 @@ test('daily grouping keeps >5 matches, canonical identities and registry order w
   assert.equal(JSON.stringify(result).includes('private-url'), false);
 });
 
-test('all eight mapped football leagues use configured seasons; other sports are excluded', async t => {
+test('all mapped football competitions use configured seasons; other sports are excluded', async t => {
   const keys = require('../src/config/competitionRegistry').competitions.map(c => c.competition_key);
   t.mock.method(provider, 'getLivescoreByOffset', async () => keys.map((key, i) =>
     record(i + 1, provider.getCompetitionMapping(key).provider_league_id))
     .concat({ ...record(100), provider_sport: 2 }));
   const result = await service.getMatchesByDate('2026-09-07', { now });
   assert.deepEqual(result.groups.map(g => g.competition.key), keys);
-  assert.equal(result.groups.flatMap(g => g.matches).length, 8);
+  assert.equal(result.groups.flatMap(g => g.matches).length, keys.length);
+});
+
+test('Nations League daily fixtures use canonical scoped identities without duplicates', async t => {
+  t.mock.method(provider, 'getLivescoreByOffset', async () => [
+    {
+      ...record(497722, 318, '2026-09-07T12:00:00Z'),
+      host: { id: 352, name: 'فرانسه', logo: 'france.png' },
+      guest: { id: 349, name: 'ایتالیا', logo: 'italy.png' },
+      status: 7
+    },
+    record(497722, 318, '2026-09-07T12:00:00Z')
+  ]);
+  const result = await service.getMatchesByDate('2026-09-07', { now });
+  assert.equal(result.groups.length, 1);
+  assert.equal(result.groups[0].competition.key, 'uefa_nations_league_a');
+  assert.equal(result.groups[0].competition.season_key, '2026-2027');
+  assert.equal(result.groups[0].matches.length, 1);
+  const match = result.groups[0].matches[0];
+  assert.equal(match.id, stableId('match', 'varzesh3', 497722));
+  assert.equal(match.competition_key, 'uefa_nations_league_a');
+  assert.equal(match.season_key, '2026-2027');
+  assert.equal(match.home_name_fa, 'فرانسه');
+  assert.equal(match.away_name_fa, 'ایتالیا');
+  assert.equal(match.home_logo, 'france.png');
+  assert.equal(match.away_logo, 'italy.png');
 });
 
 test('startOnUtc alone controls inclusion across Tehran midnight and ignores bad kickoff rows', async t => {
