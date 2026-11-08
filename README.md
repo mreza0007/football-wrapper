@@ -147,7 +147,7 @@ The events endpoint uses the same stable match lookup and confirmed Varzesh3 `ev
 - `PORT` defaults to `3060`.
 - `SHUTDOWN_TIMEOUT_MS` defaults to `10000` milliseconds.
 
-- `VARZESH3_BASE_URL` defaults to `https://web-api.varzesh3.com/v2.0`.
+- `VARZESH3_BASE_URL` defaults to `https://web-api.varzesh3.ir/v2.0`. Set this environment variable to override the provider base URL; trailing slashes are removed.
 - `VARZESH3_TIMEOUT_MS` defaults to `30000` milliseconds.
 - `VARZESH3_LIVESCORE_CACHE_TTL_MS` defaults to `10000` milliseconds.
 - `VARZESH3_SEASON_MATCHES_CACHE_TTL_MS` defaults to `30000` milliseconds.

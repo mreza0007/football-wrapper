@@ -1,6 +1,6 @@
 'use strict';
 
-const DEFAULT_BASE_URL = 'https://web-api.varzesh3.com/v2.0';
+const DEFAULT_BASE_URL = 'https://web-api.varzesh3.ir/v2.0';
 const DEFAULT_TIMEOUT_MS = 30000;
 const DEFAULT_RETRIES = 2;
 

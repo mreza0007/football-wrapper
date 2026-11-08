@@ -9,7 +9,7 @@ const {
   flattenMatches
 } = require('../src/providers/varzesh3/seasonData');
 
-const base = 'https://web-api.varzesh3.com/v2.0';
+const base = 'https://web-api.varzesh3.ir/v2.0';
 const seasonPath = '/football/leagues/3/seasons/902037';
 
 function page(ids, links = []) {

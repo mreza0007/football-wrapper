@@ -4,9 +4,37 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+  DEFAULT_BASE_URL,
+  getConfig,
   ProviderRequestError,
   requestJson
 } = require('../src/providers/varzesh3/httpClient');
+
+function setBaseUrl(t, value) {
+  const previous = process.env.VARZESH3_BASE_URL;
+  t.after(() => {
+    if (previous === undefined) delete process.env.VARZESH3_BASE_URL;
+    else process.env.VARZESH3_BASE_URL = previous;
+  });
+  if (value === undefined) delete process.env.VARZESH3_BASE_URL;
+  else process.env.VARZESH3_BASE_URL = value;
+}
+
+test('HTTP client defaults to the Varzesh3 .ir API when no override is set', (t) => {
+  setBaseUrl(t, undefined);
+  assert.equal(DEFAULT_BASE_URL, 'https://web-api.varzesh3.ir/v2.0');
+  assert.equal(getConfig().baseUrl, DEFAULT_BASE_URL);
+});
+
+test('HTTP client preserves the environment override and removes trailing slashes', (t) => {
+  setBaseUrl(t, 'https://custom.example/v2.0///');
+  assert.equal(getConfig().baseUrl, 'https://custom.example/v2.0');
+});
+
+test('HTTP client retains default fallback for an empty environment override', (t) => {
+  setBaseUrl(t, '');
+  assert.equal(getConfig().baseUrl, DEFAULT_BASE_URL);
+});
 
 function response(body, status = 200, contentType = 'application/json') {
   return {
